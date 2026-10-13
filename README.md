@@ -121,7 +121,7 @@ Binds `0.0.0.0:8090` but answers only on the interfaces switched on in the phone
 | On/off state | `/var/lib/mia3-dashboard/listen.json`: `{"wifi":bool,"usb":bool,"tailscale":bool}` |
 | Firewall | `display/54_mia3_dashboard.nft` opens tcp 8090 on `wlan*`/`tailscale0`; the server itself refuses interfaces that are off |
 | Charge limit | `/var/lib/chargectl/chargectl.json` |
-| Thermal guard limits | `/var/lib/thermal-guard/limits.json`: `{"batt_max","soc_max","hold_s"}`, set by tapping the Thermal guard card on the Power page; re-read every 5 s, overrides the unit's env |
+| Thermal guard limits | `/var/lib/thermal-guard/limits.json`: `{"batt_max","soc_max","hold_s"}`, set by tapping the Thermal guard card on the Power page (both limits sit behind a "Locked" pill: tap it to edit for 60 s); re-read every 5 s, overrides the unit's env |
 
 ## Shell
 

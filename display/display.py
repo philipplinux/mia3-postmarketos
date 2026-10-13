@@ -235,6 +235,8 @@ TG_CONF = '/var/lib/thermal-guard/limits.json'   # read by thermal-guard.service
 TG_LIMITS = (('batt_max', 'Battery max', ' °C', 1, 40, 65, 55), ('soc_max', 'CPU/GPU max', ' °C', 5, 70, 110, 100),
              ('hold_s', 'Sustained for', ' s', 10, 10, 300, 60))     # key, label, unit, step, min, max, default
 TG_CARD = (30, 1350, 1050, 1590)
+LOCK_CHG, LOCK_TG = (810, 972, 1020, 1026), (790, 45, 1040, 125)   # charge limit card / Thermal guard page
+UNLOCK = [0.0]   # monotonic deadline: limits are editable until then, tap the lock pill to unlock for 60 s
 POWER_BTNS = (('reboot', (30, 1620, 520, 1820)), ('poweroff', (560, 1620, 1050, 1820)))
 LIST_TOP = 150
 LIST_BOTTOM = TAB_Y - 10
@@ -1381,6 +1383,10 @@ class Ui:
             elif self.page == 3 and hit(WIFI_CARD, x, y):
                 self.sub = {'kind': 'wifi', 'info': None}
                 return [('wifi', wifi_info)]
+            elif self.page == len(TABS) - 1 and hit(LOCK_CHG, x, y):
+                UNLOCK[0] = 0.0 if limits_open() else time.monotonic() + 60
+            elif self.page == len(TABS) - 1 and not limits_open() and any(hit(b, x, y) for b in (LIM_MINUS, LIM_PLUS, DRAIN_BTN)):
+                self.toast = ('Locked: tap "Locked" first', now + 3)
             elif self.page == len(TABS) - 1 and (hit(LIM_MINUS, x, y) or hit(LIM_PLUS, x, y)):
                 t = charge_conf()['target'] + (5 if hit(LIM_PLUS, x, y) else -5)
                 try:
@@ -1583,6 +1589,11 @@ class Ui:
                     return [('wifi', set_password, w['user'], pw)]
             else:
                 kb_type(w, next((k for k, box in kb_keys(w['mode']) if hit(box, x, y)), None))
+        elif w['kind'] == 'thermal' and hit(LOCK_TG, x, y):
+            UNLOCK[0] = 0.0 if limits_open() else time.monotonic() + 60
+        elif w['kind'] == 'thermal' and not limits_open():
+            if any(hit(b, x, y) for i in range(len(TG_LIMITS)) for b in tg_btns(i)):
+                self.toast = ('Locked: tap "Locked" first', now + 3)
         elif w['kind'] == 'thermal':
             for i in range(len(TG_LIMITS)):
                 for box, sign in zip(tg_btns(i), (-1, 1)):
@@ -1939,6 +1950,7 @@ def page_thermal(w, data):
     d, text, card, bar = tools(image)
     back_btn(text, card)
     text(290, 48, 'Thermal guard', 56, bold=True)
+    lock_pill(text, card, LOCK_TG)
     c = tg_conf()
     for i, (k, label, unit, _, _, _, dflt) in enumerate(TG_LIMITS):
         y = 200 + i * 300
@@ -1947,13 +1959,25 @@ def page_thermal(w, data):
         if c[k] != dflt:
             text(1020, y + 25, f'default {dflt}{unit}', 28, MUTED, anchor='ra')
         for box, sym in zip(tg_btns(i), '−+'):
-            card(box[0], box[1], box[2] - box[0], box[3] - box[1], fill=BG, outline=CYAN)
-            text((box[0] + box[2]) // 2, (box[1] + box[3]) // 2, sym, 72, CYAN, bold=True, anchor='mm')
+            col = CYAN if limits_open() else LINE
+            card(box[0], box[1], box[2] - box[0], box[3] - box[1], fill=BG, outline=col)
+            text((box[0] + box[2]) // 2, (box[1] + box[3]) // 2, sym, 72, col, bold=True, anchor='mm')
         text(540, y + 160, f'{c[k]}{unit}', 80, bold=True, anchor='mm')
     text(60, 1140, 'Powers the phone off when a sensor stays at or', 32, MUTED)
     text(60, 1185, 'above its limit for the whole hold time.', 32, MUTED)
     text(60, 1250, 'Battery max covers battery/charger/board sensors.', 32, MUTED)
     return image
+
+
+def limits_open():
+    return time.monotonic() < UNLOCK[0]
+
+
+def lock_pill(text, card, box):
+    on = limits_open()
+    card(box[0], box[1], box[2] - box[0], box[3] - box[1], fill=BG, outline=GREEN if on else AMBER)
+    label = f'Unlocked {int(UNLOCK[0] - time.monotonic())}s' if on else 'Locked'
+    text((box[0] + box[2]) // 2, (box[1] + box[3]) // 2, label, 30, GREEN if on else AMBER, bold=True, anchor='mm')
 
 
 def set_charge_conf(**kw):
@@ -1987,9 +2011,11 @@ def page_battery(data, stale):
     c = charge_conf()
     card(30, 960, 1020, 360)
     text(60, 980, 'Charge limit', 34, MUTED)
+    lock_pill(text, card, LOCK_CHG)
+    col = CYAN if limits_open() else LINE
     for box, label in ((LIM_MINUS, '−'), (LIM_PLUS, '+')):
-        card(box[0], box[1], box[2] - box[0], box[3] - box[1], fill=BG, outline=CYAN)
-        text((box[0] + box[2]) // 2, (box[1] + box[3]) // 2, label, 72, CYAN, bold=True, anchor='mm')
+        card(box[0], box[1], box[2] - box[0], box[3] - box[1], fill=BG, outline=col)
+        text((box[0] + box[2]) // 2, (box[1] + box[3]) // 2, label, 72, col, bold=True, anchor='mm')
     text(540, 1100, 'No limit' if c['target'] >= 100 else f"{c['target']}%", 80, bold=True, anchor='mm')
     on = c['drain'] and c['target'] < 100
     text(60, 1215, 'Drain down to the limit', 38, TEXT if c['target'] < 100 else MUTED)
@@ -2398,6 +2424,10 @@ def selftest():
     globals()['CHG_CONF'] = tempfile.mkdtemp() + '/chg.json'
     ui.page = len(TABS) - 1
     assert charge_conf() == {'target': 50, 'drain': True}
+    ui.on_gesture(('tap', 900, 1100), data, 0)
+    assert charge_conf()['target'] == 50 and not limits_open()   # locked: + does nothing
+    ui.on_gesture(('tap', 900, 1000), data, 0)                  # lock pill
+    assert limits_open()
     ui.on_gesture(('tap', 900, 1100), data, 0); ui.on_gesture(('tap', 900, 1100), data, 0)
     ui.on_gesture(('tap', 500, 1250), data, 0)
     assert charge_conf() == {'target': 60, 'drain': False}
@@ -2410,6 +2440,9 @@ def selftest():
     assert ui.sub == {'kind': 'thermal'}
     ui.on_gesture(('tap', 100, 320), data, 0); ui.on_gesture(('tap', 900, 920), data, 0)
     assert tg_conf() == {'batt_max': 54, 'soc_max': 100, 'hold_s': 70}
+    ui.on_gesture(('tap', 900, 80), data, 0)                    # relock on the Thermal guard page
+    ui.on_gesture(('tap', 900, 920), data, 0)
+    assert not limits_open() and tg_conf()['hold_s'] == 70
     ui.render(data, False, 0)
     ui.on_gesture(('tap', 100, 80), data, 0)
     assert ui.sub is None

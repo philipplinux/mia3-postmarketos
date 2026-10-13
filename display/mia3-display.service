@@ -16,6 +16,8 @@ ProtectHome=read-only
 ReadWritePaths=/sys/class/backlight/5e94000.dsi.0 /sys/kernel/config
 # /etc: chpasswd (SSH page "Set password") rewrites /etc/shadow
 ReadWritePaths=-/etc /home/philipp -/mnt/sd
+# settings the Power/Network pages write: charge limit, thermal guard limits, web dashboard interfaces
+ReadWritePaths=-/var/lib/chargectl -/var/lib/thermal-guard -/var/lib/mia3-dashboard
 ProtectKernelModules=true
 ProtectKernelLogs=true
 ProtectControlGroups=true
