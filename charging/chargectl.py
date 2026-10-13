@@ -5,14 +5,14 @@ No fuel gauge on this PMIC, so it works from battery voltage (dashboard OCV tabl
 Modes: charge (USB charges), hold (USB powers the phone, battery idle), discharge (USB ignored, run on battery).
 Heat: no battery thermistor is wired up, so the hottest of charger/board/XO sensors stands in for it.
 Too hot -> hold (no charge current, and USB still carries the load); unreadable temps count as hot.
-/etc/chargectl.json {"target": 20-100, "drain": bool} sets the level (100 = no limit) and whether a battery above it
+/var/lib/chargectl/chargectl.json {"target": 20-100, "drain": bool} sets the level (100 = no limit) and whether a battery above it
 is run down to it (drain) or just left alone; edits apply within a few seconds.
 """
 import glob, json, os, sys, time
 
 P = "/sys/module/pmi632_chg/parameters/"
 STATE = "/run/chargectl.mode"
-CONF = "/etc/chargectl.json"
+CONF = "/var/lib/chargectl/chargectl.json"
 # same rough OCV table as the dashboard's battery.py (V -> %)
 OCV = [(3.40, 0), (3.60, 10), (3.70, 25), (3.80, 45), (3.90, 60), (4.00, 72), (4.10, 85), (4.25, 95), (4.40, 100)]
 # tuning knobs (volts) around the target's rest voltage; voltage under charge reads ~0.05-0.1 V above rest

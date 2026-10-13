@@ -103,7 +103,9 @@ def battery_info(sys_root: Path) -> dict[str, Any]:
             "temperature_c": None, "voltage_v": None, "current_ma": None, "present": None}
 
 
-from battery import iio_battery
+from battery import charge_conf, iio_battery, set_charge_conf
+
+SD_PATH = "/mnt/sd"
 from gpu import gpu_info
 from services import services_info
 
@@ -151,6 +153,26 @@ def _cpu_totals(proc_root: Path) -> tuple[int, int] | None:
             except ValueError:
                 return None
     return None
+
+
+def _core_totals(proc_root: Path) -> list[tuple[int, int]]:
+    """Per-core (total, busy) ticks from the cpuN lines of /proc/stat."""
+    cores = []
+    for line in (_read_text(proc_root / "stat") or "").splitlines():
+        fields = line.split()
+        if fields and fields[0][:3] == "cpu" and fields[0][3:].isdigit():
+            ticks = [int(field) for field in fields[1:9]]
+            cores.append((sum(ticks), sum(ticks) - ticks[3] - ticks[4]))
+    return cores
+
+
+def _disk(path: str) -> dict[str, Any]:
+    try:
+        usage = shutil.disk_usage(path)
+        return {"path": path, "total_bytes": usage.total, "used_bytes": usage.used, "free_bytes": usage.free,
+                "used_percent": round(usage.used * 100 / usage.total, 1) if usage.total else None}
+    except OSError:
+        return {"path": path, "total_bytes": None, "used_bytes": None, "free_bytes": None, "used_percent": None}
 
 
 def _process_snapshot(proc_root: Path) -> dict[int, tuple[int, int, str, int]]:
@@ -318,6 +340,7 @@ class Collector:
         self.run = run
         self.docker_cmd = docker_cmd
         self._previous_cpu: tuple[int, int] | None = None
+        self._previous_cores: list[tuple[int, int]] = []
         self._previous_processes: dict[int, tuple[int, int, str, int]] = {}
         self._feature_cache: dict[str, tuple[float, dict[str, Any]]] = {}
         self._lock = threading.Lock()
@@ -354,6 +377,10 @@ class Collector:
                                      "rss_bytes": rss,
                                      "memory_percent": round(rss * 100 / memory_total, 1)
                                      if memory_total else None})
+            cores = _core_totals(self.proc_root)
+            core_percent = [round(max(0, min(100, (b - pb) * 100 / (t - pt))), 1) if t > pt else None
+                            for (t, b), (pt, pb) in zip(cores, self._previous_cores)]
+            self._previous_cores = cores
             self._previous_cpu = current_cpu
             self._previous_processes = current_processes
             process_rows.sort(key=lambda row: (row["cpu_percent"] is not None,
@@ -370,25 +397,19 @@ class Collector:
                 row["killable"] = uid == me and not process_protected(row["pid"], row["name"])
             for row in process_rows[:30] + sorted(process_rows, key=lambda r: -r["rss_bytes"])[:30]:
                 row["cmd"] = _cmdline(self.proc_root, row["pid"])
-            try:
-                usage = shutil.disk_usage(self.storage_path)
-                storage = {"path": self.storage_path, "total_bytes": usage.total,
-                           "used_bytes": usage.used, "free_bytes": usage.free,
-                           "used_percent": round(usage.used * 100 / usage.total, 1) if usage.total else None}
-            except OSError:
-                storage = {"path": self.storage_path, "total_bytes": None, "used_bytes": None,
-                           "free_bytes": None, "used_percent": None}
+            storage = _disk(self.storage_path)
             return {
                 "collected_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
-                "battery": battery_info(self.sys_root),
+                "battery": {**battery_info(self.sys_root), "charge": charge_conf()},
                 "gpu": gpu_info(self.sys_root),
                 "thermal": thermal_info(),
                 "services": services_info(self.run),
                 "uptime_seconds": uptime_seconds(self.proc_root),
                 "cpu": {"percent": cpu_percent, "logical_cores": self.cpu_count,
-                        "process_percent_basis": "one core = 100%"},
+                        "process_percent_basis": "one core = 100%", "cores": core_percent},
                 "memory": memory_info(self.proc_root),
                 "storage": storage,
+                "sd": _disk(SD_PATH) if os.path.ismount(SD_PATH) else None,
                 "wifi": self._feature("wifi", lambda: wifi_info(self.proc_root, self.run)),
                 "processes": process_rows,
                 "containers": self._feature("docker", lambda: docker_info(self.run, self.docker_cmd)),
@@ -477,6 +498,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return self._json(400, False, "bad request")
         if self.path == "/api/process/kill":
             ok, msg = self.collector.kill(body.get("pid"), body.get("start"), body.get("signal"))
+        elif self.path == "/api/charge":
+            ok, msg = set_charge_conf(body.get("target"), body.get("drain"))
         elif self.path.startswith("/api/docker/"):
             ok, msg = self.collector.docker_action(self.path[len("/api/docker/"):], body.get("name"))
         else:

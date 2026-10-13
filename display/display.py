@@ -229,7 +229,7 @@ CONFIRM_TEXT = {'restart': ('Restart', 'The container will be restarted'), 'paus
                 'delete': ('Delete', 'The file is gone for good'),
                 'delete_dir': ('Delete', 'The folder and everything in it'),
                 'reboot': ('Reboot', 'The phone restarts'), 'poweroff': ('Shut down', 'Turn it back on with the power button')}
-CHG_CONF = '/etc/chargectl.json'    # read by chargectl.service: {"target": 20-100, "drain": bool}
+CHG_CONF = '/var/lib/chargectl/chargectl.json'    # read by chargectl.service: {"target": 20-100, "drain": bool}
 LIM_MINUS, LIM_PLUS, DRAIN_BTN = (60, 1040, 260, 1160), (820, 1040, 1020, 1160), (60, 1200, 1020, 1300)
 POWER_BTNS = (('reboot', (30, 1620, 520, 1820)), ('poweroff', (560, 1620, 1050, 1820)))
 LIST_TOP = 150
@@ -242,7 +242,8 @@ CANCEL_BTN = (130, 1130, 510, 1260)
 RESTART_BTN = (570, 1130, 950, 1260)
 BACK_BTN = (30, 30, 250, 130)
 WIFI_CARD = (30, 170, 1050, 690)        # Network page: Wi-Fi card opens the details page
-NET_ROWS = (('ssh', 'SSH'), ('tailscale', 'Tailscale'), ('usb', 'USB'), ('bluetooth', 'Bluetooth'), ('ir', 'IR remote'))
+NET_ROWS = (('ssh', 'SSH'), ('tailscale', 'Tailscale'), ('usb', 'USB'), ('bluetooth', 'Bluetooth'), ('ir', 'IR remote'),
+            ('web', 'Web dashboard'))
 IPCFG_BTN = (30, 1070, 1050, 1190)      # Wi-Fi details: IP & DNS settings
 SAVED_BTN = (30, 1210, 1050, 1330)      # Wi-Fi details: saved networks (forget)
 CHANGE_BTN = (30, 1350, 1050, 1470)     # Wi-Fi details: open the network picker
@@ -399,6 +400,28 @@ def sh(*cmd, timeout=30, stdin=None):
 def svc(unit, on):
     ok, msg = sh('systemctl', 'enable' if on else 'disable', '--now', unit)
     return ok, f"{unit} {'started' if on else 'stopped'}" if ok else (msg.splitlines() or ['failed'])[-1][:80]
+
+
+WEB_PORT, WEB_STATE = '8090', [0.0, None]     # [checked_at, up]: tailnet-only proxy to the local dashboard
+
+
+def web_up(now=None):
+    now = time.monotonic() if now is None else now
+    if now - WEB_STATE[0] > 10:
+        ok, out = sh('tailscale', 'serve', 'status', '--json', timeout=5)
+        try:
+            WEB_STATE[:] = [now, ok and WEB_PORT in (json.loads(out or '{}').get('TCP') or {})]
+        except ValueError:
+            WEB_STATE[:] = [now, None]
+    return WEB_STATE[1]
+
+
+def web_serve(on):
+    cmd = ('--bg', f'--http={WEB_PORT}', f'http://127.0.0.1:{WEB_PORT}') if on else (f'--http={WEB_PORT}', 'off')
+    ok, msg = sh('tailscale', 'serve', *cmd, timeout=15)
+    WEB_STATE[0] = 0.0
+    return ok, ('Web dashboard on http://mia3:8090' if on else 'Web dashboard off') if ok else \
+        (msg.splitlines() or ['failed'])[-1][:80]
 
 
 def login_users():
@@ -1306,6 +1329,8 @@ class Ui:
                         self.confirm = ('ts_off', None, 'Tailscale', now + CONFIRM_S)
                         return []
                     return [('wifi', svc, 'tailscaled', True)]
+                if key == 'web':
+                    return [('wifi', web_serve, not web_up())]
                 if key == 'ssh':
                     users = login_users()
                     self.sub = {'kind': 'ssh', 'users': users, 'user': users[0], 'pw': '', 'mode': 'abc', 'show': False}
@@ -1813,6 +1838,9 @@ def page_network(data, stale):
         elif key == 'ir':
             up = Path(IR).exists()
             state = 'Ready' if up else 'Missing'
+        elif key == 'web':
+            up = web_up()
+            state = 'On' if up else 'Off' if up is False else state
         text(980, y + 35, state, 48, GREEN if up is True else AMBER if up is False else MUTED, bold=True, anchor='ra')
         text(1030, y + 33, '›', 52, MUTED, anchor='ra')
     text(1030, 190, '›', 52, MUTED, anchor='ra')
@@ -2110,6 +2138,8 @@ def selftest():
     ui.on_gesture(('tap', 500, NET_TOP + NET_ROW + 5), ndata, 0)            # Tailscale up: confirm first
     assert ui.confirm[0] == 'ts_off'
     assert ui.on_gesture(('tap', 760, 1200), ndata, 1) == [('act', 'ts_off', None)]
+    WEB_STATE[:] = [time.monotonic(), False]
+    assert ui.on_gesture(('tap', 500, NET_TOP + 5 * NET_ROW + 5), ndata, 0) == [('wifi', web_serve, True)]
     assert ui.on_gesture(('tap', 500, NET_TOP + NET_ROW + 5), {}, 2) == [('wifi', svc, 'tailscaled', True)]
     ui.on_gesture(('tap', 500, NET_TOP + 5), ndata, 3)
     assert ui.sub['kind'] == 'ssh'

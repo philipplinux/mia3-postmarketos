@@ -1,5 +1,6 @@
 """Battery estimate from PMIC IIO ADCs (no fuel gauge driver on the Mi A3)."""
 import json
+import os
 from pathlib import Path
 
 # Li-ion open-circuit voltage (V) -> percent; rough, and reads high while charging.
@@ -46,11 +47,38 @@ def iio_battery(sys_root):
 MODES = {"charge": "Charging to ~{}%", "hold": "USB power, holding ~{}%", "discharge": "On battery, draining to ~{}%"}
 
 
-def charge_target():
+CONF = "/var/lib/chargectl/chargectl.json"  # read by chargectl.service; dir owned by philipp so this service can write
+
+
+def charge_conf():
     try:
-        return max(20, min(100, int(json.load(open("/etc/chargectl.json")).get("target", 50))))
+        c = json.load(open(CONF))
+        return {"target": max(20, min(100, int(c.get("target", 50)))), "drain": bool(c.get("drain", True))}
     except (OSError, ValueError, TypeError, AttributeError):
-        return 50
+        return {"target": 50, "drain": True}
+
+
+def set_charge_conf(target=None, drain=None):
+    c = charge_conf()
+    if target is not None:
+        if not isinstance(target, int) or isinstance(target, bool):
+            return False, "bad target"
+        c["target"] = max(20, min(100, target))
+    if drain is not None:
+        if not isinstance(drain, bool):
+            return False, "bad drain"
+        c["drain"] = drain
+    try:
+        with open(CONF + ".tmp", "w") as f:
+            json.dump(c, f)
+        os.replace(CONF + ".tmp", CONF)
+    except OSError as e:
+        return False, f"could not save: {e.strerror}"
+    return True, f"Charge limit {c['target']}%" + (", drain on" if c["drain"] else "")
+
+
+def charge_target():
+    return charge_conf()["target"]
 
 
 def status(plugged):
@@ -69,5 +97,11 @@ if __name__ == '__main__':
     assert percent_from_vbat(3.75) == 35 and percent_from_vbat(4.0) == 72
     vals = [percent_from_vbat(3.4 + i / 100) for i in range(101)]
     assert vals == sorted(vals)
+    import tempfile
+    CONF = tempfile.mkdtemp() + '/c.json'
+    assert charge_conf() == {"target": 50, "drain": True}
+    assert set_charge_conf(85, False)[0] and charge_conf() == {"target": 85, "drain": False}
+    assert set_charge_conf(5)[0] and charge_target() == 20
+    assert not set_charge_conf("x")[0] and not set_charge_conf(drain=1)[0]
     print(iio_battery('/sys'))
     print('ok')

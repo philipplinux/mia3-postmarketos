@@ -8,8 +8,8 @@ Tested on kernel `linux-nura-qcom-sm61x5` 7.2.3, booting slot b. No warranty: ba
 | `dts/` | Device-tree with cpufreq-hw, Bluetooth (WCN3988 on GENI UART) and the IR blaster. `CPUFREQ.md` has the cpufreq-only write-up |
 | `display/` | Framebuffer + touch UI (root service), icon tab bar: Overview, Containers, Processes, Network page (Wi-Fi details, static IP/DNS, picker, saved networks/forget, SSH, Tailscale, USB modes, Bluetooth with pairing popup, IR remote with d-pad/Home/Back), Files (browse/preview; new folder and delete only under `/home/philipp` and `/mnt/sd`), Power |
 | `bluetooth/` | `bt-agent.service`: headless auto-accept agent (only without the display; the display has its own pairing popup) |
-| `dashboard/` | Web dashboard (user service, port 8090): CPU/GPU/battery/thermals/services/processes |
-| `charging/` | `pmi632_chg` kernel module (charge on/off, USB suspend) + `chargectl.py` that holds the battery at a set level (default 50 %, `/etc/chargectl.json`, adjustable on the Power page) |
+| `dashboard/` | Web dashboard (user service, 127.0.0.1:8090; tailnet via `tailscale serve --bg --http=8090 http://127.0.0.1:8090`, toggle on the Network page): CPU per core/GPU/battery + charge limit/thermals/services/processes/SD |
+| `charging/` | `pmi632_chg` kernel module (charge on/off, USB suspend) + `chargectl.py` that holds the battery at a set level (default 50 %, `/var/lib/chargectl/chargectl.json` owned by the dashboard user, adjustable on the Power page and the web dashboard) |
 | `thermal-guard/` | Powers the phone off on sustained overheating |
 | `shell/` | bash + starship + ble.sh + fzf setup (plain-text prompt on the framebuffer console) |
 
