@@ -28,7 +28,6 @@ def gpu_info(sys_root: Path) -> dict:
     reported = mhz(path / 'cur_freq')
     result.update(model=f'Adreno {match.group(1)}' if match else 'Adreno GPU',
                   power_state=state, reported_clock_mhz=reported,
-                  clock_mhz=None,  # cur_freq pinned at max with no devfreq transitions: not a load
-                  
+                  clock_mhz=reported if state == 'active' else None,  # devfreq scales 320-950 MHz with load
                   max_clock_mhz=mhz(path / 'max_freq'))
     return result
