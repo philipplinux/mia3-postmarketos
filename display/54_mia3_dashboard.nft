@@ -1,0 +1,5 @@
+table inet filter {
+	chain input {
+		iifname { "wlan*", "tailscale0" } tcp dport 8090 accept comment "mia3 web dashboard (the server refuses interfaces switched off on the phone)"
+	}
+}

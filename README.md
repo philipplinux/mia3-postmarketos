@@ -1,6 +1,6 @@
-# Xiaomi Mi A3 (laurel_sprout, SM6125) on postmarketOS
+# Xiaomi Mi A3 (M1906F9SH, laurel_sprout, SM6125) on postmarketOS
 
-A Mi A3 running postmarketOS edge as a headless home server with a touch dashboard on its own screen.
+A Xiaomi Mi A3 (model M1906F9SH, codename `laurel_sprout`, SoC SM6125) running postmarketOS edge as a headless home server with a touch dashboard on its own screen.
 Tested on kernel `linux-nura-qcom-sm61x5` 7.2.3, booting slot b. No warranty: back up your boot image first.
 
 | Folder | What |
@@ -8,7 +8,7 @@ Tested on kernel `linux-nura-qcom-sm61x5` 7.2.3, booting slot b. No warranty: ba
 | `dts/` | Device-tree with cpufreq-hw, Bluetooth (WCN3988 on GENI UART) and the IR blaster. `CPUFREQ.md` has the cpufreq-only write-up |
 | `display/` | Framebuffer + touch UI (root service), icon tab bar: Overview, Containers, Processes, Network page (Wi-Fi details, static IP/DNS, picker, saved networks/forget, SSH, Tailscale, USB modes, Bluetooth with pairing popup, IR remote with d-pad/Home/Back), Files (browse/preview; new folder and delete only under `/home/philipp` and `/mnt/sd`), Power |
 | `bluetooth/` | `bt-agent.service`: headless auto-accept agent (only without the display; the display has its own pairing popup) |
-| `dashboard/` | Web dashboard (user service, 127.0.0.1:8090; tailnet via `tailscale serve --bg --http=8090 http://127.0.0.1:8090`, toggle on the Network page): CPU per core/GPU/battery + charge limit/thermals/services/processes/SD |
+| `dashboard/` | Web dashboard (user service on port 8090, reachable per interface: see "Web dashboard"): CPU per core/GPU/battery + charge limit/thermals/services/processes/SD |
 | `charging/` | `pmi632_chg` kernel module (charge on/off, USB suspend) + `chargectl.py` that holds the battery at a set level (default 50 %, `/var/lib/chargectl/chargectl.json` owned by the dashboard user, adjustable on the Power page and the web dashboard) |
 | `thermal-guard/` | Powers the phone off on sustained overheating |
 | `shell/` | bash + starship + ble.sh + fzf setup (plain-text prompt on the framebuffer console) |
@@ -24,6 +24,26 @@ Tested on kernel `linux-nura-qcom-sm61x5` 7.2.3, booting slot b. No warranty: ba
 | `firmware/` | `pil-squasher python3` |
 | `shell/` | `bash starship fzf fd font-jetbrains-mono-nerd` + ble.sh (see below) |
 | IR / Bluetooth tests | `v4l-utils` (`ir-ctl`), `bluez-btmgmt` |
+
+## Host (PC) requirements
+
+- **Flashing:** `fastboot` only. Fedora/Arch: `android-tools`; Debian/Ubuntu: `adb` + `fastboot`.
+- **Fastboot mode:** Volume down + Power while off, or `systemctl reboot --reboot-argument=bootloader` on the running phone.
+- **Reaching the phone:** not `adb` (pmOS has no adbd by default). Plug in USB: the phone is `172.16.42.1`, `ssh user@172.16.42.1`. Also ssh over Wi-Fi or Tailscale.
+- **Building:** `pmbootstrap`, only for the kernel/packages.
+
+## Install (one shot)
+
+On the phone, from a checkout of this repo, as the normal user (uses `sudo`):
+
+```
+sh install.sh [--no-kernel-module] [--no-shell] [--dry-run]
+```
+
+Idempotent. Installs the apk packages above (not `firmware/`, `pmbootstrap`, `docker`), then display (+ nft rule), dashboard
+(to `~/projects/mia3-dashboard/dashboard/`, user unit path follows `$HOME`, linger on), charging (module build needs
+`KDIR=` kernel source matching `uname -r`, skipped if missing), thermal-guard and shell (existing `~/.bashrc` saved as `.bak`).
+`--dry-run` only prints the commands. Not automated: firmware, kernel/dtb flashing, Bluetooth agent, ble.sh.
 
 ## Kernel and pmaports
 
@@ -90,6 +110,17 @@ Formatted ext4 (label `sdcard`). The display's Storage tile shows its free space
   `/var/lib/thermal-guard/notify_key`), empty = off
 
 `display.py`, `chargectl.py` and `thermal-guard.py` have a `--selftest`.
+
+## Web dashboard
+
+Binds `0.0.0.0:8090` but answers only on the interfaces switched on in the phone's Network page → "Web dashboard" (Wi-Fi, USB `http://172.16.42.1:8090`, Tailscale `http://mia3:8090`); others get 403. Localhost always works.
+
+| What | Where |
+|---|---|
+| On/off state | `/var/lib/mia3-dashboard/listen.json`: `{"wifi":bool,"usb":bool,"tailscale":bool}` |
+| Firewall | `display/54_mia3_dashboard.nft` opens tcp 8090 on `wlan*`/`tailscale0`; the server itself refuses interfaces that are off |
+| Charge limit | `/var/lib/chargectl/chargectl.json` |
+| Thermal guard limits | `/var/lib/thermal-guard/limits.json`: `{"batt_max","soc_max","hold_s"}`, set by tapping the Thermal guard card on the Power page; re-read every 5 s, overrides the unit's env |
 
 ## Shell
 

@@ -231,6 +231,10 @@ CONFIRM_TEXT = {'restart': ('Restart', 'The container will be restarted'), 'paus
                 'reboot': ('Reboot', 'The phone restarts'), 'poweroff': ('Shut down', 'Turn it back on with the power button')}
 CHG_CONF = '/var/lib/chargectl/chargectl.json'    # read by chargectl.service: {"target": 20-100, "drain": bool}
 LIM_MINUS, LIM_PLUS, DRAIN_BTN = (60, 1040, 260, 1160), (820, 1040, 1020, 1160), (60, 1200, 1020, 1300)
+TG_CONF = '/var/lib/thermal-guard/limits.json'   # read by thermal-guard.service every poll
+TG_LIMITS = (('batt_max', 'Battery max', ' °C', 1, 40, 65, 55), ('soc_max', 'CPU/GPU max', ' °C', 5, 70, 110, 100),
+             ('hold_s', 'Sustained for', ' s', 10, 10, 300, 60))     # key, label, unit, step, min, max, default
+TG_CARD = (30, 1350, 1050, 1590)
 POWER_BTNS = (('reboot', (30, 1620, 520, 1820)), ('poweroff', (560, 1620, 1050, 1820)))
 LIST_TOP = 150
 LIST_BOTTOM = TAB_Y - 10
@@ -403,26 +407,40 @@ def svc(unit, on):
     return ok, f"{unit} {'started' if on else 'stopped'}" if ok else (msg.splitlines() or ['failed'])[-1][:80]
 
 
-WEB_PORT, WEB_STATE = '8090', [0.0, None]     # [checked_at, up]: tailnet-only proxy to the local dashboard
+WEB_PORT, WEB_CONF = '8090', '/var/lib/mia3-dashboard/listen.json'
+WEB_NETS = (('wifi', 'Wi-Fi', '10.0.0.x / LAN'), ('usb', 'USB', 'http://172.16.42.1:8090'),
+            ('tailscale', 'Tailscale', 'http://mia3:8090'))
+WEB_BTNS = tuple((k, (30, 200 + i * 240, 1050, 410 + i * 240)) for i, (k, _, _) in enumerate(WEB_NETS))
 
 
-def web_up(now=None):
-    now = time.monotonic() if now is None else now
-    if now - WEB_STATE[0] > 10:
-        ok, out = sh('tailscale', 'serve', 'status', '--json', timeout=5)
-        try:
-            WEB_STATE[:] = [now, ok and WEB_PORT in (json.loads(out or '{}').get('TCP') or {})]
-        except ValueError:
-            WEB_STATE[:] = [now, None]
-    return WEB_STATE[1]
+def web_conf():
+    try:
+        with open(WEB_CONF) as f:
+            c = json.load(f)
+    except (OSError, ValueError):
+        c = {}
+    return {k: c.get(k) is True for k, _, _ in WEB_NETS}
 
 
-def web_serve(on):
-    cmd = ('--bg', f'--http={WEB_PORT}', f'http://127.0.0.1:{WEB_PORT}') if on else (f'--http={WEB_PORT}', 'off')
-    ok, msg = sh('tailscale', 'serve', *cmd, timeout=15)
-    WEB_STATE[0] = 0.0
-    return ok, ('Web dashboard on http://mia3:8090' if on else 'Web dashboard off') if ok else \
-        (msg.splitlines() or ['failed'])[-1][:80]
+def web_up():
+    return any(web_conf().values())
+
+
+def web_set(key, on):
+    """Toggle one interface in listen.json; the dashboard server re-reads it per request."""
+    c = web_conf()
+    c[key] = bool(on)
+    try:
+        st = os.stat(os.path.dirname(WEB_CONF))
+        tmp = WEB_CONF + '.tmp'
+        with open(tmp, 'w') as f:
+            json.dump(c, f)
+        os.chown(tmp, st.st_uid, st.st_gid)
+        os.replace(tmp, WEB_CONF)
+    except OSError as e:
+        return False, str(e)[:80]
+    return True, f"Web dashboard {'on' if on else 'off'} via {dict((k, t) for k, t, _ in WEB_NETS)[key]}"
+
 
 
 def login_users():
@@ -901,6 +919,23 @@ def page_usb(w, data):
     return image
 
 
+def page_web(w, data):
+    image = Image.new('RGB', IMG, BG)
+    d, text, card, bar = tools(image)
+    back_btn(text, card)
+    text(290, 48, 'Web dashboard', 56, bold=True)
+    conf, wifi_ip = web_conf(), ((data.get('wifi') or {}).get('ip_address') or '').split('/')[0]
+    for (k, title, hint), (_, box) in zip(WEB_NETS, WEB_BTNS):
+        on = conf[k]
+        card(box[0], box[1], box[2] - box[0], box[3] - box[1], outline=GREEN if on else LINE)
+        text(60, box[1] + 40, title, 52, GREEN if on else TEXT, bold=True)
+        text(60, box[1] + 120, f'http://{wifi_ip}:{WEB_PORT}' if k == 'wifi' and wifi_ip else hint, 34, MUTED,
+             max_width=800)
+        text(1020, box[1] + 45, 'On' if on else 'Off', 40, GREEN if on else AMBER, anchor='ra', bold=True)
+    text(540, 1000, 'Tap to toggle · always on for the phone itself', 32, MUTED, anchor='mm')
+    return image
+
+
 def field(text, card, box, label, value, active, color=TEXT, mono=True):
     card(box[0], box[1], box[2] - box[0], box[3] - box[1], outline=CYAN if active else LINE)
     text(60, box[1] + 18, label, 30, MUTED)
@@ -1330,13 +1365,13 @@ class Ui:
                         self.confirm = ('ts_off', None, 'Tailscale', now + CONFIRM_S)
                         return []
                     return [('wifi', svc, 'tailscaled', True)]
-                if key == 'web':
-                    return [('wifi', web_serve, not web_up())]
                 if key == 'ssh':
                     users = login_users()
                     self.sub = {'kind': 'ssh', 'users': users, 'user': users[0], 'pw': '', 'mode': 'abc', 'show': False}
                 elif key == 'usb':
                     self.sub = {'kind': 'usb'}
+                elif key == 'web':
+                    self.sub = {'kind': 'web'}
                 elif key == 'ir':
                     self.sub = {'kind': 'ir', 'brand': 0}
                 else:
@@ -1351,6 +1386,8 @@ class Ui:
                     set_charge_conf(target=max(20, min(100, t)))
                 except OSError as e:
                     self.toast = (f'Could not save: {e.strerror}', now + 4)
+            elif self.page == len(TABS) - 1 and hit(TG_CARD, x, y):
+                self.sub = {'kind': 'thermal'}
             elif self.page == len(TABS) - 1 and hit(DRAIN_BTN, x, y):
                 try:
                     set_charge_conf(drain=not charge_conf()['drain'])
@@ -1545,6 +1582,18 @@ class Ui:
                     return [('wifi', set_password, w['user'], pw)]
             else:
                 kb_type(w, next((k for k, box in kb_keys(w['mode']) if hit(box, x, y)), None))
+        elif w['kind'] == 'thermal':
+            for i in range(len(TG_LIMITS)):
+                for box, sign in zip(tg_btns(i), (-1, 1)):
+                    if hit(box, x, y):
+                        try:
+                            tg_step(i, sign)
+                        except OSError as e:
+                            self.toast = (f'Could not save: {e.strerror}', now + 4)
+        elif w['kind'] == 'web':
+            for k, box in WEB_BTNS:
+                if hit(box, x, y):
+                    return [('wifi', web_set, k, not web_conf()[k])]
         elif w['kind'] == 'usb':
             for m, box in USB_BTNS:
                 if hit(box, x, y) and m != usb_mode():
@@ -1625,7 +1674,7 @@ class Ui:
         if self.wifi is not None:
             image = page_wifi(self.wifi)
         elif self.sub is not None:
-            image = {'ssh': page_ssh, 'usb': page_usb, 'bt': page_bt, 'wifi': page_wifiinfo, 'ipcfg': page_ipcfg,
+            image = {'ssh': page_ssh, 'usb': page_usb, 'web': page_web, 'thermal': page_thermal, 'bt': page_bt, 'wifi': page_wifiinfo, 'ipcfg': page_ipcfg,
                      'ir': page_ir, 'saved': page_saved, 'files': page_files}[self.sub['kind']](self.sub, data)
         elif self.detail:
             image = page_detail(self.detail, self.info, data)
@@ -1856,6 +1905,56 @@ def charge_conf():
         return {'target': 50, 'drain': True}
 
 
+def tg_conf():
+    try:
+        c = json.load(open(TG_CONF))
+    except (OSError, ValueError):
+        c = {}
+    c = c if isinstance(c, dict) else {}
+    out = {}
+    for k, _, _, _, lo, hi, dflt in TG_LIMITS:
+        v = c.get(k)
+        out[k] = max(lo, min(hi, int(v))) if isinstance(v, (int, float)) and not isinstance(v, bool) else dflt
+    return out
+
+
+def tg_step(i, sign):
+    k, _, _, step, lo, hi, _ = TG_LIMITS[i]
+    c = tg_conf()
+    c[k] = max(lo, min(hi, c[k] + sign * step))
+    tmp = TG_CONF + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(c, f)
+    os.replace(tmp, TG_CONF)
+
+
+def tg_btns(i):
+    y = 200 + i * 300
+    return (60, y + 100, 260, y + 220), (820, y + 100, 1020, y + 220)
+
+
+def page_thermal(w, data):
+    image = Image.new('RGB', IMG, BG)
+    d, text, card, bar = tools(image)
+    back_btn(text, card)
+    text(290, 48, 'Thermal guard', 56, bold=True)
+    c = tg_conf()
+    for i, (k, label, unit, _, _, _, dflt) in enumerate(TG_LIMITS):
+        y = 200 + i * 300
+        card(30, y, 1020, 260)
+        text(60, y + 25, label, 34, MUTED)
+        if c[k] != dflt:
+            text(1020, y + 25, f'default {dflt}{unit}', 28, MUTED, anchor='ra')
+        for box, sym in zip(tg_btns(i), '−+'):
+            card(box[0], box[1], box[2] - box[0], box[3] - box[1], fill=BG, outline=CYAN)
+            text((box[0] + box[2]) // 2, (box[1] + box[3]) // 2, sym, 72, CYAN, bold=True, anchor='mm')
+        text(540, y + 160, f'{c[k]}{unit}', 80, bold=True, anchor='mm')
+    text(60, 1140, 'Powers the phone off when a sensor stays at or', 32, MUTED)
+    text(60, 1185, 'above its limit for the whole hold time.', 32, MUTED)
+    text(60, 1250, 'Battery max covers battery/charger/board sensors.', 32, MUTED)
+    return image
+
+
 def set_charge_conf(**kw):
     c = {**charge_conf(), **kw}
     tmp = CHG_CONF + '.tmp'
@@ -1898,14 +1997,16 @@ def page_battery(data, stale):
     d.rounded_rectangle((880 * P, 1225 * P, 1010 * P, 1285 * P), 30 * P, fill=GREEN if on else LINE)
     d.ellipse(((950 if on else 885) * P, 1230 * P, (1005 if on else 940) * P, 1280 * P), fill=TEXT)
     th = data.get('thermal') or {}
+    tg = tg_conf()
     if th.get('sensor'):
         hot = th.get('over', 0) > 0
         card(30, 1350, 1020, 240, outline=AMBER if hot else None)
         text(60, 1375, 'Thermal guard', 36, MUTED)
         text(1020, 1368, f"{th['sensor'].replace('iio:', '')} {th['temp_c']:.1f} °C", 44, AMBER if hot else TEXT, bold=True, anchor='ra', max_width=650)
-        text(60, 1450, th.get('last_event') or 'no thermal events', 30, AMBER if hot else MUTED, max_width=960)
+        text(60, 1430, th.get('last_event') or 'no thermal events', 30, AMBER if hot else MUTED, max_width=960)
         if th.get('charge_mode'):
-            text(60, 1510, f"charger: {th['charge_mode']}", 30, MUTED)
+            text(60, 1480, f"charger: {th['charge_mode']}", 30, MUTED)
+    text(60, 1535, f"off at {tg['batt_max']} °C batt · {tg['soc_max']} °C CPU · {tg['hold_s']} s  ›", 28, MUTED)
     for act, (x0, y0, x1, y1) in POWER_BTNS:
         card(x0, y0, x1 - x0, y1 - y0, outline=AMBER if act == 'poweroff' else CYAN)
         text((x0 + x1) // 2, (y0 + y1) // 2, CONFIRM_TEXT[act][0], 56, bold=True, anchor='mm')
@@ -2139,8 +2240,10 @@ def selftest():
     ui.on_gesture(('tap', 500, NET_TOP + NET_ROW + 5), ndata, 0)            # Tailscale up: confirm first
     assert ui.confirm[0] == 'ts_off'
     assert ui.on_gesture(('tap', 760, 1200), ndata, 1) == [('act', 'ts_off', None)]
-    WEB_STATE[:] = [time.monotonic(), False]
-    assert ui.on_gesture(('tap', 500, NET_TOP + 5 * NET_ROW + 5), ndata, 0) == [('wifi', web_serve, True)]
+    assert ui.on_gesture(('tap', 500, NET_TOP + 5 * NET_ROW + 5), ndata, 0) == [] and ui.sub == {'kind': 'web'}
+    assert ui.on_gesture(('tap', 500, WEB_BTNS[1][1][1] + 5), ndata, 0)[0][:3] == ('wifi', web_set, 'usb')
+    ui.render(ndata, False, 0)
+    ui.sub = None
     assert ui.on_gesture(('tap', 500, NET_TOP + NET_ROW + 5), {}, 2) == [('wifi', svc, 'tailscaled', True)]
     ui.on_gesture(('tap', 500, NET_TOP + 5), ndata, 3)
     assert ui.sub['kind'] == 'ssh'
@@ -2301,6 +2404,14 @@ def selftest():
         ui.on_gesture(('tap', 100, 1100), data, 0)
     assert charge_conf()['target'] == 20
     ui.render(data, False, 0)
+    globals()['TG_CONF'] = tempfile.mkdtemp() + '/limits.json'
+    ui.on_gesture(('tap', 500, 1400), data, 0)
+    assert ui.sub == {'kind': 'thermal'}
+    ui.on_gesture(('tap', 100, 320), data, 0); ui.on_gesture(('tap', 900, 920), data, 0)
+    assert tg_conf() == {'batt_max': 54, 'soc_max': 100, 'hold_s': 70}
+    ui.render(data, False, 0)
+    ui.on_gesture(('tap', 100, 80), data, 0)
+    assert ui.sub is None
     print('selftest ok')
 
 

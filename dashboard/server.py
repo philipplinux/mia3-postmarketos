@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
+import socket
 import datetime as dt
 import json
 import os
@@ -106,6 +108,36 @@ def battery_info(sys_root: Path) -> dict[str, Any]:
 from battery import charge_conf, iio_battery, set_charge_conf
 
 SD_PATH = "/mnt/sd"
+LISTEN_CONF = "/var/lib/mia3-dashboard/listen.json"  # {"wifi","usb","tailscale": bool}, set on the phone's Network page
+NETS = (("local", "127.0.0.0/8"), ("usb", "172.16.42.0/24"), ("tailscale", "100.64.0.0/10"))
+
+
+def listen_conf() -> dict[str, bool]:
+    try:
+        c = json.load(open(LISTEN_CONF))
+        return {k: c.get(k) is True for k in ("wifi", "usb", "tailscale")}
+    except (OSError, ValueError, AttributeError):
+        return {"wifi": False, "usb": False, "tailscale": False}
+
+
+def net_of(local_ip: str, wifi_ip: str | None = None) -> str:
+    """Which interface class a connection arrived on, from the phone-side address."""
+    try:
+        ip = ipaddress.ip_address(local_ip.removeprefix("::ffff:"))
+    except ValueError:
+        return "other"
+    if ip.version == 6:
+        return "local" if ip.is_loopback else "other"  # ponytail: no IPv6 exposure
+    if wifi_ip and str(ip) == wifi_ip:
+        return "wifi"
+    return next((name for name, net in NETS if ip in ipaddress.ip_network(net)), "other")  # other = docker bridges etc.
+
+
+def access_info(wifi: dict[str, Any], port: int) -> dict[str, Any]:
+    conf, ip = listen_conf(), (wifi.get("ip_address") or "").split("/")[0] or None
+    urls = {"wifi": ip and f"http://{ip}:{port}", "usb": f"http://172.16.42.1:{port}",
+            "tailscale": f"http://{socket.gethostname()}:{port}"}
+    return {k: {"on": conf[k], "url": urls[k]} for k in conf}
 from gpu import gpu_info
 from services import services_info
 
@@ -339,6 +371,7 @@ class Collector:
         self.cpu_count = cpu_count or os.cpu_count() or 1
         self.run = run
         self.docker_cmd = docker_cmd
+        self.port = 8090
         self._previous_cpu: tuple[int, int] | None = None
         self._previous_cores: list[tuple[int, int]] = []
         self._previous_processes: dict[int, tuple[int, int, str, int]] = {}
@@ -411,6 +444,7 @@ class Collector:
                 "storage": storage,
                 "sd": _disk(SD_PATH) if os.path.ismount(SD_PATH) else None,
                 "wifi": self._feature("wifi", lambda: wifi_info(self.proc_root, self.run)),
+                "access": access_info(self._feature("wifi", lambda: wifi_info(self.proc_root, self.run)), self.port),
                 "processes": process_rows,
                 "containers": self._feature("docker", lambda: docker_info(self.run, self.docker_cmd)),
             }
@@ -468,7 +502,18 @@ class DashboardHandler(BaseHTTPRequestHandler):
     collector: Collector
     html_path: Path
 
+    def _blocked(self) -> bool:
+        wifi = self.collector._feature("wifi", lambda: wifi_info(self.collector.proc_root, self.collector.run))
+        net = net_of(self.connection.getsockname()[0], (wifi.get("ip_address") or "").split("/")[0] or None)
+        if net == "local" or listen_conf().get(net):
+            return False
+        self._send(403, f"Dashboard is off on {net} (turn it on in the phone's Network page)".encode(),
+                   "text/plain; charset=utf-8")
+        return True
+
     def do_GET(self) -> None:
+        if self._blocked():
+            return
         if self.path == "/api/status":
             body = json.dumps(self.collector.collect(), separators=(",", ":")).encode("utf-8")
             self._send(200, body, "application/json; charset=utf-8")
@@ -483,6 +528,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._send(404, b"Not found", "text/plain; charset=utf-8")
 
     def do_POST(self) -> None:
+        if self._blocked():
+            return
         # CSRF guard: same-origin JSON only (a cross-site page can't send application/json without a preflight).
         origin = self.headers.get("Origin") or self.headers.get("Referer") or ""
         if not origin or urlsplit(origin).netloc != self.headers.get("Host", "\0"):
@@ -534,9 +581,11 @@ def main() -> None:
     handler = type("Mi A3DashboardHandler", (DashboardHandler,), {
         "collector": Collector(), "html_path": Path(__file__).with_name("index.html")
     })
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), handler)
+    handler.collector.port = args.port
+    # Bound everywhere; _blocked() refuses interfaces that are off, nftables opens 8090 on wlan*/tailscale0.
+    server = ThreadingHTTPServer(("0.0.0.0", args.port), handler)
     server.daemon_threads = True
-    print(f"Mi A3 dashboard listening on http://127.0.0.1:{args.port}", flush=True)
+    print(f"Mi A3 dashboard listening on :{args.port} (local always; {listen_conf()})", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
