@@ -214,7 +214,7 @@ SAVED_BTN = (30, 1210, 1050, 1330)      # Wi-Fi details: saved networks (forget)
 CHANGE_BTN = (30, 1350, 1050, 1470)     # Wi-Fi details: open the network picker
 HOME_DIR = '/home/philipp'
 WRITABLE = ('/home/philipp', '/mnt/sd')    # Files may create/delete only below these (the service runs as root)
-MKDIR_BTN, DEL_BTN = (690, 30, 860, 130), (880, 30, 1050, 130)
+HIDDEN_BTN, MKDIR_BTN, DEL_BTN = (500, 30, 670, 130), (690, 30, 860, 130), (880, 30, 1050, 130)
 FILE_TOP, FILE_ROW, FILE_LINE = 210, 120, 44
 FILES_MAX, FILE_PEEK = 500, 65536
 NO_PREVIEW = ('/proc', '/sys', '/dev')  # reads there can block or hang the kernel (debugfs regmaps)
@@ -579,11 +579,13 @@ def bt_forget(addr, name):
     return ok, f'Forgot {name}' if ok else f'Forget {name} failed', bt_list()
 
 
-def list_dir(path):
+def list_dir(path, hidden=True):
     """Folders first, then files; stat follows symlinks. Capped at FILES_MAX entries."""
     ents = []
     with os.scandir(path) as it:
         for e in it:
+            if not hidden and e.name.startswith('.'):
+                continue
             try:
                 st, isdir = e.stat(), e.is_dir()
             except OSError:
@@ -862,9 +864,11 @@ def page_files(w, data):
         back_btn(text, card)
         tx = 290
     text(tx, 48, ('Delete what?' if w.get('dele') else os.path.basename(v['name'] if v else path) or '/'), 56,
-         bold=True, max_width=660 - tx, color=AMBER if w.get('dele') else TEXT)
+         bold=True, max_width=(660 if v else 480) - tx, color=AMBER if w.get('dele') else TEXT)
     can = writable(v['name'] if v else path, strict=bool(v))
     if not v:
+        btn(text, card, HIDDEN_BTN, '\U000F0208' if w.get('hidden') else '\U000F0209', CYAN if w.get('hidden') else MUTED,
+            64, False)
         btn(text, card, MKDIR_BTN, '\U000F0257', CYAN if can else LINE, 64, False)
     btn(text, card, DEL_BTN, '\U000F0A7A', (AMBER if w.get('dele') or v else MUTED) if can else LINE, 64, False)
     text(40, 150, ('…' + path[-48:]) if len(path) > 49 else path, 30, MUTED, mono=True)
@@ -1278,7 +1282,7 @@ class Ui:
     def open_dir(self, path, keep_scroll=False):
         w = self.sub or self.files
         try:
-            w.update(path=path, ents=list_dir(path), scroll=w['scroll'] if keep_scroll else 0, view=None, edit=False,
+            w.update(path=path, ents=list_dir(path, w.get('hidden', False)), scroll=w['scroll'] if keep_scroll else 0, view=None, edit=False,
                      dele=w.get('dele') and keep_scroll)
         except OSError as exc:
             self.toast = (f"{os.path.basename(path) or '/'}: {exc.strerror or 'cannot open'}", time.monotonic() + 4)
@@ -1328,6 +1332,10 @@ class Ui:
                 w['dele'] = not w.get('dele')
             else:
                 self.toast = ('Read-only here (only /home/philipp and /mnt/sd)', now + 4)
+            return []
+        if hit(HIDDEN_BTN, x, y) and not w['view']:
+            w['hidden'] = not w.get('hidden')
+            self.open_dir(w['path'])
             return []
         if hit(MKDIR_BTN, x, y) and not w['view']:
             if writable(w['path']):
@@ -2044,6 +2052,8 @@ def selftest():
         Path(f'{tmp}/b.bin').write_bytes(b'\0\1')
         Image.new('RGB', (40, 20), 'red').save(f'{tmp}/c.png')
         assert [e['name'] for e in list_dir(tmp)] == ['sub', 'a.txt', 'b.bin', 'c.png']
+        Path(f'{tmp}/.h').write_text('')
+        assert [e['name'] for e in list_dir(tmp, False)] == ['sub', 'a.txt', 'b.bin', 'c.png']
         assert file_view(f'{tmp}/a.txt')['lines'][0] == 'hello   world' and 'Binary' in file_view(f'{tmp}/b.bin')['lines'][0]
         assert file_view(f'{tmp}/c.png')['img'].size == (40, 20) and 'No preview' in file_view('/proc/kmsg')['lines'][0]
         ui = Ui()
@@ -2056,6 +2066,11 @@ def selftest():
         ui.open_dir(tmp)
         ui.sub = None
         ui.render(data, False, 0)
+        assert '.h' not in [e['name'] for e in f['ents']]
+        ui.on_gesture(('tap', 580, 80), data, 0)                          # show hidden
+        assert f['hidden'] and f['ents'][1]['name'] == '.h'
+        ui.on_gesture(('tap', 580, 80), data, 0)
+        assert '.h' not in [e['name'] for e in f['ents']]
         ui.on_gesture(('tap', 500, FILE_TOP + 5), data, 0)               # sub/
         assert f['path'] == f'{tmp}/sub' and ui.sub is None
         ui.on_gesture(('tap', 100, 80), data, 0)                          # back up
