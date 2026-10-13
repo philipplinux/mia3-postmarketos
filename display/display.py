@@ -162,11 +162,12 @@ def render(data, stale=False):
     card(x0, y0, x1 - x0, y1 - y0)
     text(585, 1615, 'Processes', 34, MUTED)
     text(585, 1660, str(len(procs)) if procs else '—', 72, bold=True)
-    text(585, 1760, 'top by CPU', 30, MUTED)
+    text(585, 1760, 'CPU % of 1 core · RAM', 30, MUTED)
     for i, pr in enumerate(procs[:4]):
         y = 1840 + i * 75
-        text(585, y, pr.get('name') or '?', 34, max_width=300)
-        text(1020, y + 2, fmt(pr.get('cpu_percent'), 0, '%'), 32, MUTED, anchor='ra')
+        text(585, y, pr.get('name') or '?', 34, max_width=210)
+        text(890, y + 2, fmt(pr.get('cpu_percent'), 0, '%'), 32, anchor='ra')
+        text(1020, y + 2, fmt_mem(pr.get('rss_bytes')), 32, MUTED, anchor='ra')
     return image
 
 
@@ -214,7 +215,7 @@ SAVED_BTN = (30, 1210, 1050, 1330)      # Wi-Fi details: saved networks (forget)
 CHANGE_BTN = (30, 1350, 1050, 1470)     # Wi-Fi details: open the network picker
 HOME_DIR = '/home/philipp'
 WRITABLE = ('/home/philipp', '/mnt/sd')    # Files may create/delete only below these (the service runs as root)
-HIDDEN_BTN, MKDIR_BTN, DEL_BTN = (500, 30, 670, 130), (690, 30, 860, 130), (880, 30, 1050, 130)
+HIDDEN_BTN, MKDIR_BTN, DEL_BTN = (270, 30, 440, 130), (690, 30, 860, 130), (880, 30, 1050, 130)
 FILE_TOP, FILE_ROW, FILE_LINE = 210, 120, 44
 FILES_MAX, FILE_PEEK = 500, 65536
 NO_PREVIEW = ('/proc', '/sys', '/dev')  # reads there can block or hang the kernel (debugfs regmaps)
@@ -859,19 +860,20 @@ def page_files(w, data):
         btn(text, card, CONNECT_BTN, 'Create folder', GREEN if w['pw'].strip() else MUTED, 56)
         draw_kb(d, text, w)
         return image
-    tx = 40
     if v or w.get('dele') or path != '/':
         back_btn(text, card)
-        tx = 290
-    text(tx, 48, ('Delete what?' if w.get('dele') else os.path.basename(v['name'] if v else path) or '/'), 56,
-         bold=True, max_width=(660 if v else 480) - tx, color=AMBER if w.get('dele') else TEXT)
+    if v:
+        text(290, 48, os.path.basename(v['name']), 56, bold=True, max_width=570)
     can = writable(v['name'] if v else path, strict=bool(v))
     if not v:
         btn(text, card, HIDDEN_BTN, '\U000F0208' if w.get('hidden') else '\U000F0209', CYAN if w.get('hidden') else MUTED,
             64, False)
         btn(text, card, MKDIR_BTN, '\U000F0257', CYAN if can else LINE, 64, False)
     btn(text, card, DEL_BTN, '\U000F0A7A', (AMBER if w.get('dele') or v else MUTED) if can else LINE, 64, False)
-    text(40, 150, ('…' + path[-48:]) if len(path) > 49 else path, 30, MUTED, mono=True)
+    if w.get('dele') and not v:
+        text(40, 146, 'Tap an item to delete it', 36, AMBER)
+    else:
+        text(40, 146, ('…' + path[-43:]) if len(path) > 44 else path, 36, MUTED, mono=True)
     clip = Image.new('RGB', (IMG[0], round((TAB_Y - FILE_TOP) * P)), BG)
     cd, ctext, ccard, _ = tools(clip)
     off = FILE_TOP + w['scroll']
@@ -1631,18 +1633,29 @@ def page_processes(data, stale, scroll):
         y = LIST_TOP + i * rh - scroll
         if y + rh < LIST_TOP or y > LIST_BOTTOM:
             continue
+        cpu = r.get('cpu_percent')
         card(30, y, 1020, rh - 14)
-        text(60, y + 12, r.get('name'), 40, bold=True, max_width=520)
-        text(600, y + 18, r.get('user'), 30, TEXT if r.get('killable') else MUTED, max_width=180)
-        text(1020, y + 12, f"{fmt(r.get('cpu_percent'), 0, '%')}  {fmt_bytes(r.get('rss_bytes'))}", 36, anchor='ra')
-        text(60, y + 62, r.get('cmd') or r.get('name'), 26, MUTED, max_width=960)
+        text(60, y + 10, r.get('name'), 38, bold=True, max_width=700)
+        text(1020, y + 10, fmt(cpu, 0, '%'), 38, AMBER if (cpu or 0) >= 80 else CYAN if (cpu or 0) >= 30 else TEXT,
+             bold=True, anchor='ra')
+        text(60, y + 62, f"{r.get('pid')} · {r.get('user') or '?'} · {fmt_bytes(r.get('rss_bytes'))}", 28, MUTED,
+             max_width=700)
+        bar(820, y + 74, 200, cpu, 12)   # full bar = one whole core
     total = len(rows) * rh
     if total > LIST_BOTTOM - LIST_TOP:
         span = LIST_BOTTOM - LIST_TOP
         top = LIST_TOP + span * scroll / total
         d.rounded_rectangle((1066 * P, top * P, 1074 * P, (top + span * span / total) * P), 3, fill=MUTED)
-    header(image, 'Processes', stale, f'top {len(rows)} by CPU')
+    cores = (data.get('cpu') or {}).get('logical_cores')
+    header(image, 'Processes', stale, f"100% = 1 core of {cores or '?'}")
     return image
+
+
+def fmt_mem(n):
+    # compact RSS for the Overview card
+    if n is None:
+        return '—'
+    return f'{n >> 20}M' if n < 1 << 30 else f'{n / (1 << 30):.1f}G'
 
 
 def fmt_bytes(n):
@@ -1663,7 +1676,7 @@ def page_proc_detail(ui, data, now):
         return image
     text(40, 170, 'running', 64, GREEN, bold=True)
     card(30, 280, 1020, 560)
-    for i, (k, v) in enumerate((('User', r.get('user')), ('CPU', fmt(r.get('cpu_percent'), 1, '%')),
+    for i, (k, v) in enumerate((('User', r.get('user')), ('CPU (1 core = 100%)', fmt(r.get('cpu_percent'), 1, '%')),
                                 ('Memory (RSS)', fmt_bytes(r.get('rss_bytes'))),
                                 ('Kill', 'allowed' if r.get('killable') else 'not your process'))):
         text(60, 310 + i * 75, k, 34, MUTED)
@@ -2067,9 +2080,9 @@ def selftest():
         ui.sub = None
         ui.render(data, False, 0)
         assert '.h' not in [e['name'] for e in f['ents']]
-        ui.on_gesture(('tap', 580, 80), data, 0)                          # show hidden
+        ui.on_gesture(('tap', 355, 80), data, 0)                          # show hidden
         assert f['hidden'] and f['ents'][1]['name'] == '.h'
-        ui.on_gesture(('tap', 580, 80), data, 0)
+        ui.on_gesture(('tap', 355, 80), data, 0)
         assert '.h' not in [e['name'] for e in f['ents']]
         ui.on_gesture(('tap', 500, FILE_TOP + 5), data, 0)               # sub/
         assert f['path'] == f'{tmp}/sub' and ui.sub is None
@@ -2115,6 +2128,7 @@ def selftest():
     ui.on_gesture(('tap', 500, 1700), data, 0)
     assert ui.page == 1
     assert fmt_size(5) == '5 B' and fmt_size(2048) == '2.0 KiB' and fmt_size(3 << 30) == '3.0 GiB'
+    assert fmt_mem(None) == '—' and fmt_mem(45 << 20) == '45M' and fmt_mem(3 << 29) == '1.5G'
     print('selftest ok')
 
 
