@@ -1,0 +1,9 @@
+/dts-v1/;
+/plugin/;
+/* PMI632 QGauge (stock qpnp,qg / qcom,qgauge@4800): register base only, no IRQs, read-only driver mia3_qg.ko. */
+&{/soc@0/spmi@1c40000/pmic@2} {
+	qg: fuel-gauge@4800 {
+		compatible = "mia3,pmi632-qg";
+		reg = <0x4800>;
+	};
+};
