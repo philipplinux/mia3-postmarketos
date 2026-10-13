@@ -4,6 +4,7 @@ import argparse
 import ctypes
 from concurrent.futures import ThreadPoolExecutor
 import fcntl
+import ipaddress
 import json
 import logging
 import mmap
@@ -209,13 +210,36 @@ CONFIRM_S = 10.0
 CANCEL_BTN = (130, 1130, 510, 1260)
 RESTART_BTN = (570, 1130, 950, 1260)
 BACK_BTN = (30, 30, 250, 130)
-WIFI_BTN = (30, 1340, 1050, 1480)       # Network page: open the picker
-NET_ROWS = (('ssh', 'SSH'), ('tailscale', 'Tailscale'), ('usb', 'USB'), ('bluetooth', 'Bluetooth'))
+WIFI_CARD = (30, 170, 1050, 690)        # Network page: Wi-Fi card opens the details page
+NET_ROWS = (('ssh', 'SSH'), ('tailscale', 'Tailscale'), ('usb', 'USB'), ('bluetooth', 'Bluetooth'), ('ir', 'IR remote'))
+IPCFG_BTN = (30, 1170, 1050, 1310)      # Wi-Fi details: IP & DNS settings
+CHANGE_BTN = (30, 1340, 1050, 1480)     # Wi-Fi details: open the network picker
+METHOD_BTN = (30, 170, 1050, 290)
+IP_FIELDS = (('addr', 'Address / prefix', 'e.g. 10.0.0.50/24'), ('gw', 'Gateway', 'e.g. 10.0.0.1'),
+             ('dns', 'DNS servers', 'empty = from router; comma between servers'))
+IP_BOXES = tuple((f, (30, 320 + i * 190, 1050, 480 + i * 190)) for i, (f, _, _) in enumerate(IP_FIELDS))
+IR = '/dev/lirc0'
+# Common TV codes (ir-ctl protocol, {button: scancode}); only LG verified on a real TV so far
+IR_BRANDS = (('LG', 'nec', {'Power': 0x0408, 'Input': 0x040b, 'Mute': 0x0409, 'Vol +': 0x0402, 'Vol -': 0x0403,
+                            'Ch +': 0x0400, 'Ch -': 0x0401}),
+             ('Samsung', 'necx', {'Power': 0x070702, 'Input': 0x070701, 'Mute': 0x07070f, 'Vol +': 0x070707,
+                                  'Vol -': 0x07070b, 'Ch +': 0x070712, 'Ch -': 0x070710}),
+             ('Sony', 'sony12', {'Power': 0x010015, 'Input': 0x010025, 'Mute': 0x010014, 'Vol +': 0x010012,
+                                 'Vol -': 0x010013, 'Ch +': 0x010010, 'Ch -': 0x010011}),
+             ('Philips', 'rc5', {'Power': 0x000c, 'Input': 0x0038, 'Mute': 0x000d, 'Vol +': 0x0010,
+                                 'Vol -': 0x0011, 'Ch +': 0x0020, 'Ch -': 0x0021}))
+IR_BRAND_BTN = (30, 170, 1050, 290)
+IR_KEYS = ('Power', 'Input', 'Mute', 'Vol +', 'Ch +', None, 'Vol -', 'Ch -')
+IR_BTNS = tuple((k, (30 + (i % 2) * 520, 330 + (i // 2) * 210, 530 + (i % 2) * 520, 510 + (i // 2) * 210))
+                for i, k in enumerate(IR_KEYS) if k)
+IR_ALL_BTN = (30, 1200, 1050, 1340)
+BT_VIS = (30, 310, 530, 430)
+BT_NAME = (550, 310, 1050, 430)
 NET_TOP, NET_ROW = 720, 150
 SSH_TOGGLE = (700, 185, 1035, 305)
 USER_BTN = (30, 350, 1050, 490)
 BT_POWER = (30, 170, 1050, 290)
-BT_TOP = 320
+BT_TOP = 460
 USB_MODES = (('network', 'Network', 'USB Ethernet, phone at 172.16.42.1'),
              ('serial', 'Network + serial', 'Adds a login console (ttyACM on the PC)'),
              ('charge', 'Charge only', 'No data, just power'))
@@ -419,6 +443,116 @@ def bt_act(addr, name, how):
     return ok, f'{verb} {name}' if ok else f'{how.capitalize()} {name} failed', bt_list()
 
 
+def nm_fields(out):
+    """`nmcli -t -e no -f ...` key:value lines -> {key: [values]}; 'IP4.DNS[2]' folds into 'IP4.DNS'."""
+    res = {}
+    for line in out.splitlines():
+        k, _, v = line.partition(':')
+        if v:
+            res.setdefault(k.split('[')[0], []).append(v)
+    return res
+
+
+def wifi_dev():
+    out = nmcli('-t', '-f', 'DEVICE,TYPE', 'dev', timeout=10)[1]
+    return next((l.split(':')[0] for l in out.splitlines() if l.endswith(':wifi')), 'wlan0')
+
+
+def wifi_info():
+    dev = wifi_dev()
+    info = nm_fields(nmcli('-t', '-e', 'no', '-f', 'GENERAL.CONNECTION,GENERAL.HWADDR,IP4.ADDRESS,IP4.GATEWAY,IP4.DNS,'
+                           'IP6.ADDRESS', 'dev', 'show', dev, timeout=10)[1])
+    con = (info.get('GENERAL.CONNECTION') or [''])[0]
+    if con:
+        info.update(nm_fields(nmcli('-t', '-e', 'no', '-f', 'ipv4.method,ipv4.addresses,ipv4.gateway,ipv4.dns,'
+                                    'ipv4.ignore-auto-dns', 'con', 'show', 'id', con, timeout=10)[1]))
+    for line in nmcli('-t', '-e', 'no', '-f', 'IN-USE,FREQ,CHAN,RATE,SECURITY', 'dev', 'wifi', 'list', 'ifname', dev,
+                      '--rescan', 'no', timeout=10)[1].splitlines():
+        if line.startswith('*:'):
+            info['link'] = line.split(':')[1:]
+    info['dev'], info['con'] = dev, con
+    return info
+
+
+def ip_args(method, addr, gw, dns):
+    """Validated `nmcli con modify` args for the IP & DNS page; raises ValueError with a short message."""
+    servers = [x for x in dns.replace(' ', ',').split(',') if x]
+    for x in servers:
+        try:
+            ipaddress.ip_address(x)
+        except ValueError:
+            raise ValueError(f'Bad DNS server: {x}')
+    args = ['ipv4.dns', ','.join(servers), 'ipv4.ignore-auto-dns', 'yes' if servers else 'no']
+    if method == 'auto':
+        return ['ipv4.method', 'auto', 'ipv4.addresses', '', 'ipv4.gateway', ''] + args
+    try:
+        net = ipaddress.ip_interface(addr if '/' in addr else addr + '/24')
+    except ValueError:
+        raise ValueError(f'Bad address: {addr or "empty"}')
+    if net.version != 4:
+        raise ValueError('Address must be IPv4')
+    if gw:
+        try:
+            g = ipaddress.ip_address(gw)
+        except ValueError:
+            raise ValueError(f'Bad gateway: {gw}')
+        if g not in net.network:
+            raise ValueError(f'Gateway {gw} not in {net.network}')
+    return ['ipv4.method', 'manual', 'ipv4.addresses', str(net), 'ipv4.gateway', gw] + args
+
+
+def ip_apply(con, method, addr, gw, dns):
+    """Apply, reconnect, ping the gateway; on any failure put the old settings back."""
+    try:
+        args = ip_args(method, addr, gw, dns)
+    except ValueError as exc:
+        return False, str(exc)
+    keys = ('ipv4.method', 'ipv4.addresses', 'ipv4.gateway', 'ipv4.dns', 'ipv4.ignore-auto-dns')
+    old = nm_fields(nmcli('-t', '-e', 'no', '-f', ','.join(keys), 'con', 'show', 'id', con, timeout=10)[1])
+    ok, msg = nmcli('con', 'modify', 'id', con, *args, timeout=15)
+    if ok:
+        ok, msg = nmcli('--wait', '30', 'con', 'up', 'id', con)
+    if ok:
+        info = wifi_info()
+        gw_now = (info.get('IP4.GATEWAY') or [''])[0]
+        ok = not gw_now or sh('ping', '-c', '1', '-W', '3', gw_now, timeout=6)[0]
+        msg = 'Gateway not reachable' if not ok else msg
+    if not ok:
+        nmcli('con', 'modify', 'id', con, *[x for k in keys for x in (k, (old.get(k) or [''])[0])], timeout=15)
+        nmcli('--wait', '30', 'con', 'up', 'id', con)
+        return False, f"{(msg.splitlines() or ['failed'])[-1].replace('Error: ', '')[:60]}: reverted", wifi_info()
+    return True, 'IP settings saved', info
+
+
+def ir_send(proto, code, label='button'):
+    ok, msg = sh('ir-ctl', '-d', IR, *['-S', f'{proto}:{code:#x}'] * (3 if proto.startswith('sony') else 1), timeout=5)
+    return ok, f'Sent {label}' if ok else (msg.splitlines() or ['IR failed'])[-1][:80]
+
+
+def ir_all_off():
+    sent = [b for b, proto, codes in IR_BRANDS if ir_send(proto, codes['Power'])[0]]
+    return bool(sent), f"Power sent: {', '.join(sent)}" if sent else 'IR failed'
+
+
+def bt_vis(on):
+    for cmd in (('pairable', 'on' if on else 'off'), ('discoverable', 'on' if on else 'off')):
+        ok, msg = sh('bluetoothctl', *cmd, timeout=10)
+        if not ok or 'Failed' in msg:
+            return False, msg[-80:], bt_list()
+    return True, 'Visible for 3 minutes' if on else 'Hidden', bt_list()
+
+
+def bt_rename(name):
+    ok, msg = sh('bluetoothctl', 'system-alias', name, timeout=10)
+    return ok and 'Failed' not in msg, f'Bluetooth name: {name}' if ok else msg[-80:], bt_list()
+
+
+def bt_state():
+    out = sh('bluetoothctl', 'show', timeout=5)[1]
+    alias = next((l.split(':', 1)[1].strip() for l in out.splitlines() if l.strip().startswith('Alias:')), '')
+    return {'on': 'Powered: yes' in out, 'vis': 'Discoverable: yes' in out, 'alias': alias}
+
+
 def back_btn(text, card):
     card(30, 30, BACK_BTN[2] - BACK_BTN[0], BACK_BTN[3] - BACK_BTN[1])
     text(140, 80, '‹ Back', 44, anchor='mm')
@@ -468,11 +602,84 @@ def page_usb(w, data):
     return image
 
 
+def field(text, card, box, label, value, active, color=TEXT, mono=True):
+    card(box[0], box[1], box[2] - box[0], box[3] - box[1], outline=CYAN if active else LINE)
+    text(60, box[1] + 18, label, 30, MUTED)
+    text(60, box[1] + 70, value[-36:] or ' ', 46, color, mono=mono)
+
+
+def page_wifiinfo(w, data):
+    image = Image.new('RGB', IMG, BG)
+    d, text, card, bar = tools(image)
+    back_btn(text, card)
+    wifi, i = data.get('wifi') or {}, w.get('info')
+    text(290, 48, wifi.get('ssid') or (i or {}).get('con') or 'Wi-Fi', 56, bold=True, max_width=760)
+    if i is None:
+        text(540, 600, 'Loading…', 48, MUTED, anchor='mm')
+    else:
+        first = lambda k: (i.get(k) or ['—'])[0]
+        link = i.get('link') or ['—'] * 4
+        rows = (('Signal', f"{fmt(wifi.get('signal_percent'), suffix='%')}"), ('IP address', first('IP4.ADDRESS')),
+                ('IP mode', 'Static' if first('ipv4.method') == 'manual' else 'DHCP'), ('Gateway', first('IP4.GATEWAY')),
+                ('DNS', ', '.join(i.get('IP4.DNS') or ['—'])), ('Band', f'{link[0]} · ch {link[1]}'),
+                ('Link rate', link[2]), ('Security', link[3] or 'Open'), ('MAC', first('GENERAL.HWADDR')),
+                ('IPv6', first('IP6.ADDRESS')))
+        card(30, 170, 1020, 970)
+        for n, (k, v) in enumerate(rows):
+            text(60, 200 + n * 92, k, 34, MUTED)
+            text(1020, 196 + n * 92, v, 38, anchor='ra', max_width=700)
+    btn(text, card, IPCFG_BTN, 'IP & DNS settings', CYAN, 48)
+    btn(text, card, CHANGE_BTN, 'Change network', CYAN, 48)
+    return image
+
+
+def page_ipcfg(w, data):
+    image = Image.new('RGB', IMG, BG)
+    d, text, card, bar = tools(image)
+    back_btn(text, card)
+    text(290, 48, 'IP & DNS', 56, bold=True)
+    auto = w['method'] == 'auto'
+    btn(text, card, METHOD_BTN, 'Automatic (DHCP) · tap for static' if auto else 'Static · tap for DHCP',
+        GREEN if auto else AMBER, 42)
+    for (f, label, hint), (_, box) in zip(IP_FIELDS, IP_BOXES):
+        off = auto and f != 'dns'
+        field(text, card, box, label, 'automatic' if off else w[f] or hint, w['field'] == f and not off,
+              MUTED if off or not w[f] else TEXT, mono=bool(w[f]) and not off)
+    text(540, 920, 'Wrong settings are reverted if the gateway stops answering', 30, MUTED, anchor='mm')
+    btn(text, card, CONNECT_BTN, 'Save and reconnect', GREEN, 52)
+    draw_kb(d, text, w)
+    return image
+
+
+def page_ir(w, data):
+    image = Image.new('RGB', IMG, BG)
+    d, text, card, bar = tools(image)
+    back_btn(text, card)
+    text(290, 48, 'IR remote', 56, bold=True)
+    brand = IR_BRANDS[w['brand']][0]
+    btn(text, card, IR_BRAND_BTN, f'{brand} TV · tap to switch', CYAN, 44)
+    for k, box in IR_BTNS:
+        btn(text, card, box, k, AMBER if k == 'Power' else TEXT, 52)
+    btn(text, card, IR_ALL_BTN, 'All TVs off (every brand)', AMBER, 44)
+    text(540, 1420, 'Point the top edge of the phone at the device' if Path(IR).exists() else 'No IR device (/dev/lirc0)',
+         32, MUTED if Path(IR).exists() else AMBER, anchor='mm')
+    return image
+
+
 def page_bt(w, data):
     image = Image.new('RGB', IMG, BG)
     d, text, card, bar = tools(image)
     back_btn(text, card)
+    if w.get('edit'):
+        text(290, 48, 'Bluetooth name', 56, bold=True)
+        field(text, card, (30, 200, 1050, 360), 'Shown to other devices', w['pw'], True, mono=False)
+        btn(text, card, CONNECT_BTN, 'Save name', GREEN if w['pw'].strip() else MUTED, 56)
+        draw_kb(d, text, w)
+        return image
     text(290, 48, 'Bluetooth', 56, bold=True)
+    vis = w.get('vis')
+    btn(text, card, BT_VIS, 'Visible' if vis else 'Hidden', GREEN if vis else MUTED, 44)
+    btn(text, card, BT_NAME, (w.get('alias') or 'Name') + ' ›', CYAN, 40, False)
     btn(text, card, RESCAN_BTN, 'Rescan', CYAN, 40, False)
     on = w.get('on')
     btn(text, card, BT_POWER, 'On · tap to turn off' if on else 'Off · tap to turn on', GREEN if on else AMBER, 44)
@@ -728,12 +935,14 @@ class Ui:
                     self.sub = {'kind': 'ssh', 'users': users, 'user': users[0], 'pw': '', 'mode': 'abc', 'show': False}
                 elif key == 'usb':
                     self.sub = {'kind': 'usb'}
+                elif key == 'ir':
+                    self.sub = {'kind': 'ir', 'brand': 0}
                 else:
-                    self.sub = {'kind': 'bt', 'devs': None, 'on': up}
+                    self.sub = {'kind': 'bt', 'devs': None, 'edit': False, **bt_state()}
                     return [('wifi', bt_scan)]
-            elif self.page == 3 and hit(WIFI_BTN, x, y):
-                self.wifi = {'nets': None, 'sel': None, 'pw': '', 'mode': 'abc', 'show': False}
-                return [('wifi', wifi_scan)]
+            elif self.page == 3 and hit(WIFI_CARD, x, y):
+                self.sub = {'kind': 'wifi', 'info': None}
+                return [('wifi', wifi_info)]
             elif self.page == len(TABS) - 1:
                 for act, box in POWER_BTNS:
                     if hit(box, x, y):
@@ -781,7 +990,12 @@ class Ui:
         """SSH / USB / Bluetooth sub-pages of the Network tab."""
         w, kind = self.sub, g[0]
         if (kind == 'tap' and hit(BACK_BTN, g[1], g[2])) or (kind == 'swipe' and g[1] == 'right'):
-            self.sub = None
+            if w['kind'] == 'ipcfg':
+                self.sub = {'kind': 'wifi', 'info': w['info']}
+            elif w.get('edit'):
+                w['edit'] = False
+            else:
+                self.sub = None
             return []
         if kind != 'tap':
             return []
@@ -807,7 +1021,56 @@ class Ui:
                 if hit(box, x, y) and m != usb_mode():
                     self.toast = ('Switching USB mode…', float('inf'))
                     return [('wifi', usb_set, m)]
+        elif w['kind'] == 'wifi':
+            i = w['info']
+            if hit(CHANGE_BTN, x, y):
+                self.wifi = {'nets': None, 'sel': None, 'pw': '', 'mode': 'abc', 'show': False}
+                return [('wifi', wifi_scan)]
+            if hit(IPCFG_BTN, x, y) and i and i.get('con'):
+                first = lambda *ks: next((i[k][0] for k in ks if i.get(k)), '')
+                method = 'manual' if first('ipv4.method') == 'manual' else 'auto'
+                self.sub = {'kind': 'ipcfg', 'info': i, 'con': i['con'], 'method': method,
+                            'addr': first('ipv4.addresses', 'IP4.ADDRESS'), 'gw': first('ipv4.gateway', 'IP4.GATEWAY'),
+                            'dns': first('ipv4.dns'), 'field': 'addr' if method == 'manual' else 'dns',
+                            'mode': 'sym', 'show': True}
+        elif w['kind'] == 'ipcfg':
+            if hit(METHOD_BTN, x, y):
+                w['method'] = 'auto' if w['method'] == 'manual' else 'manual'
+                w['field'] = 'addr' if w['method'] == 'manual' else 'dns'
+            elif hit(CONNECT_BTN, x, y):
+                self.toast = ('Applying, Wi-Fi reconnects…', float('inf'))
+                return [('wifi', ip_apply, w['con'], w['method'], w['addr'].strip(), w['gw'].strip(), w['dns'].strip())]
+            elif any(hit(box, x, y) for _, box in IP_BOXES):
+                f = next(f for f, box in IP_BOXES if hit(box, x, y))
+                if w['method'] == 'manual' or f == 'dns':
+                    w['field'] = f
+            else:
+                kb_type(w, next((k for k, box in kb_keys(w['mode']) if hit(box, x, y)), None), w['field'])
+        elif w['kind'] == 'ir':
+            brand, proto, codes = IR_BRANDS[w['brand']]
+            if hit(IR_BRAND_BTN, x, y):
+                w['brand'] = (w['brand'] + 1) % len(IR_BRANDS)
+            elif hit(IR_ALL_BTN, x, y):
+                self.toast = ('Sending power to every brand…', float('inf'))
+                return [('wifi', ir_all_off)]
+            for k, box in IR_BTNS:
+                if hit(box, x, y):
+                    return [('wifi', ir_send, proto, codes[k], f'{brand} {k}')]
+        elif w['kind'] == 'bt' and w.get('edit'):
+            if hit(CONNECT_BTN, x, y):
+                name = w['pw'].strip()
+                if name:
+                    w.update(edit=False, alias=name)
+                    return [('wifi', bt_rename, name)]
+            else:
+                kb_type(w, next((k for k, box in kb_keys(w['mode']) if hit(box, x, y)), None))
         elif w['kind'] == 'bt':
+            if hit(BT_VIS, x, y):
+                w['vis'] = not w.get('vis')
+                return [('wifi', bt_vis, w['vis'])]
+            if hit(BT_NAME, x, y):
+                w.update(edit=True, pw=w.get('alias') or '', mode='abc', show=True)
+                return []
             if hit(RESCAN_BTN, x, y):
                 w['devs'] = None
                 return [('wifi', bt_scan)]
@@ -826,7 +1089,8 @@ class Ui:
         if self.wifi is not None:
             image = page_wifi(self.wifi)
         elif self.sub is not None:
-            image = {'ssh': page_ssh, 'usb': page_usb, 'bt': page_bt}[self.sub['kind']](self.sub, data)
+            image = {'ssh': page_ssh, 'usb': page_usb, 'bt': page_bt, 'wifi': page_wifiinfo, 'ipcfg': page_ipcfg,
+                     'ir': page_ir}[self.sub['kind']](self.sub, data)
         elif self.detail:
             image = page_detail(self.detail, self.info, data)
         elif self.pdetail:
@@ -1002,10 +1266,12 @@ def page_network(data, stale):
             state, up = dict((k, t) for k, t, _ in USB_MODES).get(m, state), m != 'charge'
         elif key == 'bluetooth':
             state = 'On' if up else 'Off' if up is False else state
+        elif key == 'ir':
+            up = Path(IR).exists()
+            state = 'Ready' if up else 'Missing'
         text(980, y + 35, state, 48, GREEN if up is True else AMBER if up is False else MUTED, bold=True, anchor='ra')
         text(1030, y + 33, '›', 52, MUTED, anchor='ra')
-    card(WIFI_BTN[0], WIFI_BTN[1], WIFI_BTN[2] - WIFI_BTN[0], WIFI_BTN[3] - WIFI_BTN[1], outline=CYAN)
-    text(540, (WIFI_BTN[1] + WIFI_BTN[3]) // 2, 'Change Wi-Fi network', 48, CYAN, bold=True, anchor='mm')
+    text(1030, 190, '›', 52, MUTED, anchor='ra')
     return image
 
 
@@ -1218,7 +1484,34 @@ def selftest():
     assert [n['ssid'] for n in nets] == ['home', 'a:b', 'cafe'] and nets[0]['signal'] == 80 and not nets[2]['secure']
     ui = Ui()
     ui.page = 3
-    assert ui.on_gesture(('tap', 500, 1350), data, 0) == [('wifi', wifi_scan)] and ui.wifi['nets'] is None
+    assert ui.on_gesture(('tap', 500, 400), data, 0) == [('wifi', wifi_info)] and ui.sub['kind'] == 'wifi'
+    ui.render(data, False, 0)
+    info = nm_fields('GENERAL.CONNECTION:home\nIP4.ADDRESS[1]:10.0.0.50/24\nIP4.GATEWAY:10.0.0.1\nIP4.DNS[1]:1.1.1.1\n'
+                     'IP4.DNS[2]:9.9.9.9\nipv4.method:manual\nipv4.addresses:10.0.0.50/24\nipv4.dns:\n')
+    assert info['IP4.DNS'] == ['1.1.1.1', '9.9.9.9'] and 'ipv4.dns' not in info
+    ui.sub['info'] = {**info, 'con': 'home', 'link': ['5180 MHz', '36', '1170 Mbit/s', 'WPA2']}
+    ui.render(data, False, 0)
+    ui.on_gesture(('tap', 500, 1240), data, 0)                  # IP & DNS settings
+    assert ui.sub['kind'] == 'ipcfg' and ui.sub['addr'] == '10.0.0.50/24' and ui.sub['field'] == 'addr'
+    ui.render(data, False, 0)
+    ui.on_gesture(('tap', 500, IP_BOXES[2][1][1] + 20), data, 0)  # DNS field
+    for k in '1.1.1.1':
+        ui.on_gesture(('tap', *next(((b[0] + b[2]) // 2, (b[1] + b[3]) // 2) for kk, b in kb_keys('sym') if kk == k)), data, 0)
+    assert ui.on_gesture(('tap', 500, 1400), data, 0) == [('wifi', ip_apply, 'home', 'manual', '10.0.0.50/24', '10.0.0.1',
+                                                          '1.1.1.1')]
+    assert ip_args('manual', '10.0.0.50', '10.0.0.1', '1.1.1.1, 9.9.9.9') == [
+        'ipv4.method', 'manual', 'ipv4.addresses', '10.0.0.50/24', 'ipv4.gateway', '10.0.0.1',
+        'ipv4.dns', '1.1.1.1,9.9.9.9', 'ipv4.ignore-auto-dns', 'yes']
+    assert ip_args('auto', 'x', 'y', '')[:2] == ['ipv4.method', 'auto'] and ip_args('auto', '', '', '')[-1] == 'no'
+    for bad in (('manual', '10.0.0.300/24', '', ''), ('manual', '10.0.0.9/24', '10.0.1.1', ''), ('auto', '', '', '1.1.1')):
+        try:
+            ip_args(*bad)
+            assert False, bad
+        except ValueError:
+            pass
+    ui.on_gesture(('tap', 100, 80), data, 0)                    # back to details
+    assert ui.sub['kind'] == 'wifi'
+    assert ui.on_gesture(('tap', 500, 1400), data, 0) == [('wifi', wifi_scan)] and ui.wifi['nets'] is None
     ui.render(data, False, 0)
     ui.wifi['nets'] = nets
     assert ui.on_gesture(('tap', 500, WIFI_TOP + WIFI_ROW + 5), data, 0) == [('wifi', wifi_connect, 'a:b', None, True)]
@@ -1271,6 +1564,20 @@ def selftest():
     ui.render(ndata, False, 7)
     assert ui.on_gesture(('tap', 500, BT_TOP + 5), ndata, 8) == [('wifi', bt_act, 'AA:BB:CC:DD:EE:02', 'Keyboard', 'connect')]
     assert ui.on_gesture(('tap', 500, BT_TOP + WIFI_ROW + 5), ndata, 8)[0][3:] == ('Speaker', 'pair')
+    ui.sub['vis'] = False
+    assert ui.on_gesture(('tap', 200, 370), ndata, 8) == [('wifi', bt_vis, True)]
+    ui.on_gesture(('tap', 800, 370), ndata, 8)
+    assert ui.sub['edit']
+    ui.sub['pw'] = 'mia3'
+    ui.render(ndata, False, 8)
+    assert ui.on_gesture(('tap', 500, 1400), ndata, 8) == [('wifi', bt_rename, 'mia3')] and not ui.sub['edit']
+    ui.sub = None
+    ui.on_gesture(('tap', 500, NET_TOP + 4 * NET_ROW + 5), ndata, 9)
+    assert ui.sub == {'kind': 'ir', 'brand': 0}
+    ui.render(ndata, False, 9)
+    assert ui.on_gesture(('tap', 200, 400), ndata, 9) == [('wifi', ir_send, 'nec', 0x0408, 'LG Power')]
+    ui.on_gesture(('tap', 500, 230), ndata, 9)
+    assert ui.on_gesture(('tap', 800, 1050), ndata, 9) == [('wifi', ir_send, 'necx', 0x070710, 'Samsung Ch -')]
     print('selftest ok')
 
 
@@ -1798,19 +2105,30 @@ def main():
                 except Exception as exc:
                     logging.exception('Wi-Fi action failed')
                     res = (False, str(exc)[:80])
+                refresh = False
                 if isinstance(res, list):
                     if ui.wifi is not None:
                         ui.wifi['nets'] = res
                     elif ui.sub is not None:
                         ui.sub['devs'] = res
+                elif isinstance(res, dict):
+                    if ui.sub is not None and ui.sub['kind'] == 'wifi':
+                        ui.sub['info'] = res
                 else:
                     logging.info('Job result: %s', res[1])
                     ui.toast = (res[1], now + 6)
-                    if len(res) > 2 and ui.sub is not None:
-                        ui.sub['devs'] = res[2]
+                    extra = res[2] if len(res) > 2 else None
+                    if isinstance(extra, dict) and ui.sub is not None:     # ip_apply: back to details on success
+                        ui.sub = {'kind': 'wifi', 'info': extra} if res[0] else {**ui.sub, 'info': extra}
+                    elif extra is not None and ui.sub is not None:
+                        ui.sub['devs'] = extra
                     if res[0]:
+                        refresh = ui.wifi is not None and ui.sub is not None and ui.sub['kind'] == 'wifi'
                         ui.wifi = None
                 wifi_future, ui_dirty = None, True
+                if refresh:                                                # new network: reload the details page
+                    ui.sub['info'] = None
+                    wifi_future = dpool.submit(wifi_info)
             if restart_future is not None and restart_future.done():
                 ok, msg = restart_future.result()
                 logging.info('Touch action result: %s', msg)

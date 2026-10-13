@@ -6,11 +6,24 @@ Tested on kernel `linux-nura-qcom-sm61x5` 7.2.3, booting slot b. No warranty: ba
 | Folder | What |
 |---|---|
 | `dts/` | Device-tree with cpufreq-hw, Bluetooth (WCN3988 on GENI UART) and the IR blaster. `CPUFREQ.md` has the cpufreq-only write-up |
-| `display/` | Framebuffer + touch UI (root service): status pages, Wi-Fi picker, Network page (SSH, Tailscale, USB modes, Bluetooth finder) |
+| `display/` | Framebuffer + touch UI (root service): status pages, Network page (Wi-Fi details, static IP/DNS, picker, SSH, Tailscale, USB modes, Bluetooth, IR remote) |
+| `bluetooth/` | `bt-agent.service`: pairing agent so PCs can pair without a prompt on the phone |
 | `dashboard/` | Web dashboard (user service, port 8090): CPU/GPU/battery/thermals/services/processes |
 | `charging/` | `pmi632_chg` kernel module (charge on/off, USB suspend) + `chargectl.py` that holds the battery near 50 % |
 | `thermal-guard/` | Powers the phone off on sustained overheating |
 | `shell/` | bash + starship + ble.sh + fzf setup (plain-text prompt on the framebuffer console) |
+
+## Dependencies
+
+| For | apk packages |
+|---|---|
+| `display/` | `python3 py3-pillow font-opensans font-droid networkmanager-cli bluez bluez-deprecated bluez-tools v4l-utils iputils` |
+| `dashboard/` | `python3` (stdlib only); optional `docker` (containers page), `tailscale` |
+| `charging/` | `clang lld llvm make kmod` + a kernel source tree matching the running kernel (`KDIR=`, built with `LLVM=1`) |
+| `thermal-guard/` | `python3`, `openssh-client` only for the optional notify |
+| `firmware/` | `pil-squasher python3` |
+| `shell/` | `bash starship fzf fd font-jetbrains-mono-nerd` + ble.sh (see below) |
+| IR / Bluetooth tests | `v4l-utils` (`ir-ctl`), `bluez-btmgmt` |
 
 ## Kernel and pmaports
 
@@ -51,7 +64,10 @@ laurel uses `deviceinfo_append_dtb=true`, so the kernel in boot.img is `vmlinuz`
   into `/lib/firmware/qca/` and symlink them to those names.
 - The controller has no address in OTP, so the dts sets `local-bd-address`. Change it to your own
   (locally administered, bytes reversed in the dts).
-- `apk add bluez bluez-deprecated bluez-btmgmt && systemctl enable --now bluetooth`
+- `apk add bluez bluez-deprecated bluez-btmgmt bluez-tools && systemctl enable --now bluetooth`
+- `bluetooth/bt-agent.service` → `/etc/systemd/system/`, `systemctl enable --now bt-agent` (auto-accepts pairing).
+  Set `PairableTimeout = 180` in `/etc/bluetooth/main.conf`; the display's Visible toggle makes the phone
+  discoverable + pairable for that window.
 
 ## IR blaster
 

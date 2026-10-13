@@ -1,0 +1,11 @@
+[Unit]
+Description=Bluetooth pairing agent (Just Works; only answers while the phone is pairable)
+After=bluetooth.service
+Requires=bluetooth.service
+
+[Service]
+ExecStart=/usr/sbin/bt-agent -c NoInputNoOutput
+Restart=on-failure
+
+[Install]
+WantedBy=bluetooth.target
