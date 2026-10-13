@@ -46,7 +46,7 @@ extracted from it later. Unlocking wipes the phone.
    ([pmOS wiki](https://wiki.postmarketos.org/wiki/Xiaomi_Mi_A3_(xiaomi-laurel))).
 4. **Reach it:** plug in USB, `ssh user@172.16.42.1`.
 5. **Firmware:** on the phone, `sudo sh firmware/extract-firmware.sh` (reads stock slot a), or keep a copy as the
-   private repo does. Then connect Wi-Fi with `nmcli`.
+   blobs repo [mia3-postmarketos-private](https://github.com/philipplinux/mia3-postmarketos-private) does. Then connect Wi-Fi with `nmcli`.
 6. **dtb:** append `dts/k7.dtb` to the kernel and reflash `boot_b` (see "Boot image with the dtb"). This brings up
    cpufreq, Bluetooth, the IR blaster and Wi-Fi.
 7. **Everything else:** on the PC, `sh deploy.sh <ssh-host>` (see "Install (one shot)").
@@ -84,7 +84,7 @@ extracted from it later. Unlocking wipes the phone.
 
 ## Install (one shot)
 
-From the PC (kernel tree at `KDIR`, default `~/projects/mia3-kernel/linux-7.2.3-r0`; Docker; private repo checked
+From the PC (kernel tree at `KDIR`, default `~/projects/mia3-kernel/linux-7.2.3-r0`; Docker; the blobs repo `mia3-postmarketos-private` checked
 out next to this one for firmware):
 
 ```
@@ -122,7 +122,8 @@ The kernel is built locally from pmaports, not the stock package:
   them from your phone's own stock partitions (`modem_a`, `vendor_a`, `bluetooth_a`, read-only) into `/lib/firmware`:
   modem/CDSP/Wi-Fi, the ath10k `board-2.bin` (via `ath10k-bdenc.py`), the GPU zap shader and Bluetooth.
   Run as root on the phone (`apk add pil-squasher` first); `FW=/tmp/x` tests into another dir.
-  Firmware © Qualcomm / Xiaomi, sourced from the phone's stock Android partitions. The owner keeps a copy plus stock images in a separate private repo.
+  Firmware © Qualcomm / Xiaomi, sourced from the phone's stock Android partitions. A copy plus stock images and dt dumps lives in
+  [mia3-postmarketos-private](https://github.com/philipplinux/mia3-postmarketos-private) (no licence granted, see its README).
 
 Build: apply the diff and copy the patches into a pmaports checkout at `ec98ddd`, run the extract script (or put its output in the firmware package dir), then
 `pmbootstrap build linux-nura-qcom-sm61x5 firmware-xiaomi-laurel-cdsp device-xiaomi-laurel`.
@@ -215,8 +216,9 @@ into `~/.local/share/blesh`, and `starship preset plain-text-symbols -o ~/.confi
 - Unlock: [LineageOS laurel_sprout install guide](https://wiki.lineageos.org/devices/laurel_sprout/install/)
 - PMI632 charger and USB current: [Xiaomi kernel `smb5-lib.c`](https://github.com/MiCode/Xiaomi_Kernel_OpenSource/blob/d3766fc8cda2d96de2850faa9ce58e5a37ea9f9c/drivers/power/supply/qcom/smb5-lib.c#L3848-L3904)
 - Battery OCV table, amp registers, Bluetooth firmware names: the phone's stock `dtbo_a` / `bluetooth_a` partitions and
-  Xiaomi's GPL `max98937.c` (copies in the private repo)
+  Xiaomi's GPL [`max98937.c`](https://github.com/LineageOS/android_kernel_xiaomi_sdm660/blob/49688d8750f2fca28271f936cfcfec5d97c0d7a4/techpack/audio/asoc/codecs/max98937.c) (copies in the blobs repo)
 - TSENS module: mainline [`drivers/thermal/qcom/tsens.c`](https://codeberg.org/sm61x5-mainline/linux/src/tag/v7.2.3-r0/drivers/thermal/qcom/tsens.c)
+- Firmware, stock images, stock dt dumps, vendor amp sources: [mia3-postmarketos-private](https://github.com/philipplinux/mia3-postmarketos-private)
 - Shell: [ble.sh](https://github.com/akinomyoga/ble.sh), [starship](https://starship.rs)
 
 ## Gotchas
@@ -237,6 +239,14 @@ Audio has a bottom-speaker on/off slider that restores the previous gain.
 
 Not planned for now (deliberately left disabled): top earpiece and microphones (WCD937x codec + LPASS macros +
 SoundWire, all off in the kernel config) and GPS (needs a QMI LOC userspace client).
+
+## License
+
+Your own use, changes and sharing are free; commercial use is not: [PolyForm Noncommercial 1.0.0](LICENSE)
+(source-available, not OSI open source). Exceptions: the kernel modules (`*.c` with an SPDX header) and the
+`pmaports/` patches keep the licence of what they patch. Firmware is not in this repo and not covered.
+
+Required Notice: Copyright 2026 philipplinux (https://github.com/philipplinux)
 
 ---
 

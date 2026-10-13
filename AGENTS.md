@@ -6,8 +6,8 @@ Xiaomi Mi A3 on postmarketOS (kernel 7.2.3-sm61x5). README.md has the full pictu
 
 | Host | Address | Use |
 |---|---|---|
-| `mia3` | Tailscale `100.x.y.z` | default |
-| `mia3-wifi` | `10.0.0.50` | when Tailscale is down |
+| `mia3` | Tailscale (`~/.ssh/config`) | default |
+| `mia3-wifi` | LAN (`~/.ssh/config`) | when Tailscale is down |
 | USB | `172.16.42.1` | last resort |
 
 - The OnePlus OT3 (`ot3-usb`) also sits at `172.16.42.1` on another USB interface. If the host key mismatches, you reached the wrong phone. Never override the host key.
@@ -30,7 +30,7 @@ Xiaomi Mi A3 on postmarketOS (kernel 7.2.3-sm61x5). README.md has the full pictu
 - **Docker on the phone:** never a bare `docker compose up -d`. Lidarr stays off.
 - **Audio tests:** quiet. Use `mia3-chime test` or low-gain tones.
 - **Out of scope:** earpiece, microphones and GPS are deliberately left disabled.
-- **Proprietary files:** firmware, stock images and vendor sources belong in the private repo `mia3-postmarketos-private`, never here.
+- **Proprietary files:** firmware, stock images and vendor sources belong in the blobs repo `mia3-postmarketos-private` (no licence claimed there), never here.
 
 ## Logging
 
