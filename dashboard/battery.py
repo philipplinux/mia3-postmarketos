@@ -1,6 +1,8 @@
 """Battery estimate from PMIC IIO ADCs (no fuel gauge driver on the Mi A3)."""
 import json
 import os
+import time
+from collections import deque
 from pathlib import Path
 
 # Li-ion open-circuit voltage (V) -> percent; rough, and reads high while charging.
@@ -15,6 +17,17 @@ def percent_from_vbat(v):
         if v <= v1:
             return round(p0 + (p1 - p0) * (v - v0) / (v1 - v0))
     return 100
+
+
+VBAT = deque()   # (monotonic s, V): % comes from the last 60 s average, a single read jumps with load
+
+
+def smooth_vbat(v, now=None, window=60):
+    now = time.monotonic() if now is None else now
+    VBAT.append((now, v))
+    while VBAT[0][0] < now - window:
+        VBAT.popleft()
+    return sum(x for _, x in VBAT) / len(VBAT)
 
 
 def iio_battery(sys_root):
@@ -38,7 +51,7 @@ def iio_battery(sys_root):
     usb = read(pmi, 'in_voltage_usb_in_v_div_16_input')
     plugged = usb is not None and usb > 4000
     temp = read(pmi, 'in_temp_chg_temp_input')
-    return {"available": True, "name": "PMI632 ADC (est.)", "percent": percent_from_vbat(vbat / 1000),
+    return {"available": True, "name": "PMI632 ADC (est.)", "percent": percent_from_vbat(smooth_vbat(vbat / 1000)),
             "status": status(plugged),
             "temperature_c": round(temp, 1) if temp is not None else None,
             "voltage_v": round(vbat / 1000, 3), "current_ma": None, "present": True}
@@ -97,6 +110,9 @@ if __name__ == '__main__':
     assert percent_from_vbat(3.75) == 35 and percent_from_vbat(4.0) == 72
     vals = [percent_from_vbat(3.4 + i / 100) for i in range(101)]
     assert vals == sorted(vals)
+    assert smooth_vbat(3.8, 0) == 3.8 and abs(smooth_vbat(4.0, 30) - 3.9) < 1e-9
+    assert smooth_vbat(4.2, 100) == 4.2 and len(VBAT) == 1   # older than 60 s dropped
+    VBAT.clear()
     import tempfile
     CONF = tempfile.mkdtemp() + '/c.json'
     assert charge_conf() == {"target": 50, "drain": True}
