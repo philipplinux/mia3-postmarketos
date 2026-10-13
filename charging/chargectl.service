@@ -4,8 +4,9 @@ Description=Hold battery around 50% (pmi632_chg)
 [Service]
 ExecStartPre=/sbin/modprobe pmi632_chg
 ExecStart=/usr/bin/python3 /usr/local/lib/chargectl/chargectl.py
-# Keep a deliberate hold across a clean service restart; failures fall back to normal charging.
-ExecStopPost=/bin/sh -c 'P=/sys/module/pmi632_chg/parameters; if [ "$SERVICE_RESULT" = success ] && [ "$(cat /run/chargectl.mode 2>/dev/null)" = hold ]; then exit 0; fi; echo 0 > $P/usb_suspend; echo 1 > $P/charging_enabled; rm -f /run/chargectl.mode /run/chargectl.target /run/chargectl.usb /run/chargectl.hot /run/chargectl.thermal_resume'
+# Always hand charging back to the hardware on stop: nothing watches the battery while the service is down.
+# A clean stop/restart keeps the /run state, so chargectl re-latches hold within seconds of starting again.
+ExecStopPost=/bin/sh -c 'P=/sys/module/pmi632_chg/parameters; echo 0 > $P/usb_suspend; echo 1 > $P/charging_enabled; [ "$SERVICE_RESULT" = success ] || rm -f /run/chargectl.mode /run/chargectl.target /run/chargectl.usb /run/chargectl.hot /run/chargectl.thermal_resume'
 Restart=always
 RestartSec=10
 

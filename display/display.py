@@ -545,9 +545,6 @@ def bt_powered():
 
 def bt_scan():
     sh('bluetoothctl', 'power', 'on', timeout=10)
-    ok, msg, _ = bt_vis(True)
-    if not ok:
-        return False, msg, bt_list()
     sh('bluetoothctl', '--timeout', '8', 'scan', 'on', timeout=15)
     return bt_list()
 
