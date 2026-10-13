@@ -2758,6 +2758,7 @@ class Display:
                 time.sleep(0.05)
             self.restore_fbdev()
         self.view = 'kmscon' if n == KMSCON_VT else 'terminal'
+        logging.info('tty strip: tty%d', n)
 
     def tty_bar(self):
         # fbcon/kmscon repaint over the strip, so the loop calls this often; it only writes rows that differ.
