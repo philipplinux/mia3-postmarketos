@@ -19,6 +19,7 @@ import socket
 import re
 import struct
 import subprocess
+import sys
 import tempfile
 import textwrap
 import threading
@@ -238,7 +239,14 @@ TG_LIMITS = (('batt_max', 'Battery max', ' °C', 1, 40, 65, 55), ('soc_max', 'CP
 TG_CARD = (30, 1350, 1050, 1590)
 LOCK_CHG, LOCK_TG = (810, 972, 1020, 1026), (790, 45, 1040, 125)   # charge limit card / Thermal guard page
 UNLOCK = [0.0]   # monotonic deadline: limits are editable until then, tap the lock pill to unlock for 60 s
-FREEZE_BTN = (30, 1850, 1050, 2000)    # Power page: reboot-on-freeze toggle (system/90-mia3-panic.conf)
+FREEZE_BTN = (30, 1850, 1050, 2000)
+PERF_CARD = (30, 2020, 1050, 2170)      # Power page -> Audio & performance sub-page
+TONE_BTN = (30, 1300, 1050, 1430)
+# speaker volume/gain + test tone from the web dashboard's modules (reused, not copied)
+DASH_LIB = '/home/philipp/projects/mia3-dashboard/dashboard'
+CPUFREQ = Path('/sys/devices/system/cpu/cpufreq')
+PERF_ROWS = (('volume', 'Speaker volume'), ('gain', 'Speaker gain'), ('policy0', 'CPU little (0-3) max'),
+             ('policy4', 'CPU big (4-7) max'), ('gpu', 'GPU max'))    # Power page: reboot-on-freeze toggle (system/90-mia3-panic.conf)
 PANIC_CONF = '/etc/sysctl.d/90-mia3-panic.conf'
 PANIC_KEYS = ('softlockup_panic', 'hardlockup_panic', 'panic_on_rcu_stall')   # kernel.panic = 10 then reboots
 POWER_BTNS = (('reboot', (30, 1620, 520, 1820)), ('poweroff', (560, 1620, 1050, 1820)))
@@ -1407,6 +1415,8 @@ class Ui:
                     self.toast = ('Reboot on freeze ' + ('on' if freeze_reboot() else 'off'), now + 3)
                 except OSError as e:
                     self.toast = (f'Could not save: {e.strerror}', now + 4)
+            elif self.page == len(TABS) - 1 and hit(PERF_CARD, x, y):
+                self.sub = {'kind': 'perf'}
             elif self.page == len(TABS) - 1 and hit(DRAIN_BTN, x, y):
                 try:
                     set_charge_conf(drain=not charge_conf()['drain'])
@@ -1614,6 +1624,10 @@ class Ui:
                             tg_step(i, sign)
                         except OSError as e:
                             self.toast = (f'Could not save: {e.strerror}', now + 4)
+        elif w['kind'] == 'perf':
+            msg = perf_tap(x, y)
+            if msg:
+                self.toast = (msg, now + 3)
         elif w['kind'] == 'web':
             for k, box in WEB_BTNS:
                 if hit(box, x, y):
@@ -1698,7 +1712,7 @@ class Ui:
         if self.wifi is not None:
             image = page_wifi(self.wifi)
         elif self.sub is not None:
-            image = {'ssh': page_ssh, 'usb': page_usb, 'web': page_web, 'thermal': page_thermal, 'bt': page_bt, 'wifi': page_wifiinfo, 'ipcfg': page_ipcfg,
+            image = {'ssh': page_ssh, 'usb': page_usb, 'web': page_web, 'thermal': page_thermal, 'perf': page_perf, 'bt': page_bt, 'wifi': page_wifiinfo, 'ipcfg': page_ipcfg,
                      'ir': page_ir, 'saved': page_saved, 'files': page_files}[self.sub['kind']](self.sub, data)
         elif self.detail:
             image = page_detail(self.detail, self.info, data)
@@ -2072,6 +2086,128 @@ def page_battery(data, stale):
     text(60, y0 + 80, 'on a kernel lockup: panic, reboot after 10 s' if fr is not None else 'unavailable', 26, MUTED)
     d.rounded_rectangle((880 * P, (y0 + 45) * P, 1010 * P, (y0 + 105) * P), 30 * P, fill=GREEN if fr else LINE)
     d.ellipse(((950 if fr else 885) * P, (y0 + 50) * P, (1005 if fr else 940) * P, (y0 + 100) * P), fill=TEXT)
+    x0, y0, x1, y1 = PERF_CARD
+    card(x0, y0, x1 - x0, y1 - y0)
+    text(60, y0 + 25, 'Audio & performance  ›', 38)
+    text(60, y0 + 80, 'speaker volume and gain, test tone, CPU/GPU clocks', 26, MUTED)
+    return image
+
+
+def dash(name):
+    """The web dashboard's audio / gpu module, or None if it isn't installed."""
+    if DASH_LIB not in sys.path:
+        sys.path.append(DASH_LIB)
+    try:
+        return __import__(name)
+    except Exception:
+        logging.exception('dashboard module %s unavailable', name)
+        return None
+
+
+def cpu_policy(name):
+    p = CPUFREQ / name
+    r = lambda f: (p / f).read_text().strip()
+    try:
+        return dict(gov=r('scaling_governor'), govs=r('scaling_available_governors').split(),
+                    max=int(r('scaling_max_freq')), freqs=sorted(int(f) for f in r('scaling_available_frequencies').split()))
+    except (OSError, ValueError):
+        return None
+
+
+def step_list(values, cur, sign):
+    """Next value in a sorted list from cur in direction sign (clamped)."""
+    i = max((i for i, v in enumerate(values) if v <= cur), default=0)
+    return values[max(0, min(len(values) - 1, i + sign))]
+
+
+def perf_rows():
+    """[(key, label, value text, governor or None)] for the Audio & performance page."""
+    a, g = dash('audio'), dash('gpu')
+    ai = a.audio_info() if a else {'available': False}
+    gi = g.gpu_info(Path('/sys')) if g else {'available': False}
+    out = []
+    for key, label in PERF_ROWS:
+        if key == 'volume':
+            out.append((key, label, f"{ai['volume']}%" if ai.get('volume') is not None else 'no sound card', None))
+        elif key == 'gain':
+            out.append((key, label, ai['gains'][ai['gain']] if ai.get('gain') is not None else '–', None))
+        elif key == 'gpu':
+            out.append((key, label, f"{gi['max_clock_mhz']:.0f} MHz" if gi.get('max_clock_mhz') else '–', gi.get('governor')))
+        else:
+            c = cpu_policy(key)
+            out.append((key, label, f"{c['max'] / 1e6:.2f} GHz" if c else '–', c and c['gov']))
+    return out
+
+
+def perf_btns(i):
+    y = 170 + i * 225
+    return (60, y + 70, 260, y + 195), (820, y + 70, 1020, y + 195), (620, y + 8, 1040, y + 62)   # -, +, governor
+
+
+def perf_tap(x, y):
+    """Applies a tap on the Audio & performance page; returns the toast text or None. CPU/GPU settings reset at reboot."""
+    if hit(TONE_BTN, x, y):
+        a = dash('audio')
+        return a.play_tone()[1] if a else 'dashboard audio module missing'
+    for i, (key, _) in enumerate(PERF_ROWS):
+        minus, plus, govb = perf_btns(i)
+        sign = -1 if hit(minus, x, y) else 1 if hit(plus, x, y) else 0
+        if not sign and not (hit(govb, x, y) and key not in ('volume', 'gain')):
+            continue
+        if key in ('volume', 'gain'):
+            a = dash('audio')
+            info = a.audio_info() if a else {}
+            if info.get(key) is None:
+                return 'sound card is not up'
+            if key == 'volume':
+                return a.set_volume(max(0, min(100, info['volume'] + 5 * sign)))[1]
+            return a.set_gain(max(0, min(len(info['gains']) - 1, info['gain'] + sign)))[1]
+        if key == 'gpu':
+            g = dash('gpu')
+            gi = g.gpu_info(Path('/sys')) if g else {}
+            if not gi.get('available'):
+                return 'no GPU devfreq'
+            if not sign:
+                govs = gi['governors']
+                return g.set_gpu(governor=govs[(govs.index(gi['governor']) + 1) % len(govs)])[1]
+            return g.set_gpu(max_mhz=step_list(sorted(gi['freqs_mhz']), round(gi['max_clock_mhz']), sign))[1]
+        c = cpu_policy(key)
+        if c is None:
+            return 'cpufreq unavailable'
+        try:
+            if not sign:
+                new = c['govs'][(c['govs'].index(c['gov']) + 1) % len(c['govs'])]
+                (CPUFREQ / key / 'scaling_governor').write_text(new)
+                return f'{key}: governor {new}'
+            new = step_list(c['freqs'], c['max'], sign)
+            (CPUFREQ / key / 'scaling_max_freq').write_text(str(new))
+            return f'{key}: max {new / 1e6:.2f} GHz'
+        except OSError as e:
+            return f'cpufreq: {e.strerror or e}'
+    return None
+
+
+def page_perf(w, data):
+    image = Image.new('RGB', IMG, BG)
+    d, text, card, bar = tools(image)
+    back_btn(text, card)
+    text(290, 48, 'Audio & performance', 56, bold=True)
+    for i, (key, label, value, gov) in enumerate(perf_rows()):
+        y = 170 + i * 225
+        minus, plus, govb = perf_btns(i)
+        card(30, y, 1020, 205)
+        text(60, y + 20, label, 34, MUTED)
+        if gov:
+            text(1020, y + 20, f'{gov}  ›', 32, CYAN, anchor='ra')
+        for box, sym in ((minus, '−'), (plus, '+')):
+            card(box[0], box[1], box[2] - box[0], box[3] - box[1], fill=BG, outline=CYAN)
+            text((box[0] + box[2]) // 2, (box[1] + box[3]) // 2, sym, 72, CYAN, bold=True, anchor='mm')
+        text(540, y + 132, value, 64, bold=True, anchor='mm', max_width=540)
+    x0, y0, x1, y1 = TONE_BTN
+    card(x0, y0, x1 - x0, y1 - y0, outline=CYAN)
+    text(540, (y0 + y1) // 2, 'Play test tone', 48, bold=True, anchor='mm')
+    text(60, 1470, 'Tap a governor to cycle it. CPU and GPU', 30, MUTED)
+    text(60, 1512, 'settings reset at reboot; audio ones persist.', 30, MUTED)
     return image
 
 
@@ -2194,6 +2330,8 @@ def selftest():
         set_freeze_reboot(False, tmp, f'{tmp}/c.conf')
         assert freeze_reboot(tmp) is False and 'kernel.hardlockup_panic = 0' in Path(tmp, 'c.conf').read_text()
         assert freeze_reboot(f'{tmp}/missing') is None
+    assert step_list([300, 600, 900], 600, 1) == 900 and step_list([300, 600, 900], 900, 1) == 900
+    assert step_list([300, 600, 900], 650, -1) == 300 and step_list([300, 600, 900], 100, -1) == 300
     t = Touch(719, 1559)
 
     def run(events, now0=0.0, step=0.01):
