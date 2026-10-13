@@ -65,6 +65,9 @@ if [ "$SHELLSETUP" = 1 ]; then   # sway on tty2 (tabs tty2-4, second power-key v
     run sudo systemctl daemon-reload
     run sudo systemctl enable getty@tty1.service getty@tty2.service
     run sudo systemctl disable getty@tty3.service getty@tty4.service getty@tty5.service
+    for t in 3 4 5; do   # older layouts had autologin there
+        [ ! -d "/etc/systemd/system/getty@tty$t.service.d" ] || run sudo rm -r "/etc/systemd/system/getty@tty$t.service.d"
+    done
 fi
 
 say "dashboard"
