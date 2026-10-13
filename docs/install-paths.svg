@@ -32,8 +32,8 @@
   <rect class="box" x="460" y="58" width="380" height="104" rx="10"/>
   <text class="t s" x="476" y="84" font-family="ui-monospace,monospace">download release tar.xz → sh flash.sh</text>
   <text class="gt s" x="476" y="108" xml:space="preserve">+ simplicity: download and flash, nothing to build</text>
-  <text class="ot s" x="476" y="126" xml:space="preserve">− after first boot: set a password and Wi-Fi</text>
-  <text class="ot s" x="476" y="144" xml:space="preserve">   on the phone's screen (Network tab)</text>
+  <text class="ot s" x="476" y="126" xml:space="preserve">− requires a credential update: change the password</text>
+  <text class="ot s" x="476" y="144" xml:space="preserve">   and add Wi-Fi via the on-screen dashboard</text>
   <path class="ln" d="M840 110 C870 110 870 235 898 235"/>
   <path class="ln" d="M170 235 C200 235 200 235 230 235" marker-end="url(#a)"/>
   <rect class="b" x="232" y="183" width="200" height="104" rx="10"/>
