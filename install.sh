@@ -67,7 +67,7 @@ fi
 
 say "dashboard"
 run sudo install -d -o "$ME" -g "$ME" /var/lib/mia3-dashboard /var/lib/chargectl
-write_default /var/lib/chargectl/chargectl.json '{"target": 50, "drain": true}'
+write_default /var/lib/chargectl/chargectl.json '{"target": 50}'
 write_default /var/lib/mia3-dashboard/listen.json '{"wifi": false, "usb": false, "tailscale": false}'
 run install -d "$DASH" "$HOME/.config/systemd/user"
 for f in "$R"/dashboard/*.py "$R"/dashboard/index.html; do run install -m644 "$f" "$DASH/"; done

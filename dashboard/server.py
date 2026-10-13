@@ -100,7 +100,7 @@ def battery_info(sys_root: Path) -> dict[str, Any]:
         voltage = _int_value(value("VOLTAGE_NOW"))
         current = _int_value(value("CURRENT_NOW"))
         present_raw = value("PRESENT")
-        return {
+        gauge = {
             "available": True,
             "name": uevent.get("NAME", path.name),
             "percent": capacity,
@@ -110,6 +110,9 @@ def battery_info(sys_root: Path) -> dict[str, Any]:
             "current_ma": round(current / 1_000, 1) if current is not None else None,
             "present": (present_raw not in {"0", "no", "false"}) if present_raw is not None else None,
         }
+        # a gauge without status/temperature (mia3-qg) keeps the ADC estimate's values for those
+        estimate = iio_battery(sys_root) or {}
+        return {**estimate, **{k: v for k, v in gauge.items() if v is not None}}
     estimate = iio_battery(sys_root)
     if estimate:
         return estimate

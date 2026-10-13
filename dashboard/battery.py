@@ -5,9 +5,11 @@ import time
 from collections import deque
 from pathlib import Path
 
-# Li-ion open-circuit voltage (V) -> percent; rough, and reads high while charging.
-OCV = [(3.40, 0), (3.60, 10), (3.70, 25), (3.80, 45), (3.90, 60), (4.00, 72),
-       (4.10, 85), (4.25, 95), (4.40, 100)]
+# OCV (V) -> percent: stock Sunwoda 4030 mAh profile at 25 °C (dtbo_a_16, same table as battery/mia3-qg.dts)
+OCV = [(3.000, 0), (3.493, 2), (3.629, 4), (3.697, 6), (3.708, 10), (3.733, 14), (3.773, 20), (3.797, 26),
+       (3.805, 30), (3.818, 36), (3.831, 40), (3.846, 44), (3.865, 48), (3.874, 50), (3.899, 54), (3.950, 58),
+       (3.967, 60), (4.014, 66), (4.053, 70), (4.094, 74), (4.156, 80), (4.223, 86), (4.270, 90), (4.340, 96),
+       (4.386, 100)]
 
 
 def percent_from_vbat(v):
@@ -121,9 +123,9 @@ def status(plugged):
 
 
 if __name__ == '__main__':
-    assert percent_from_vbat(3.3) == 0 and percent_from_vbat(4.5) == 100
-    assert percent_from_vbat(3.40) == 0 and percent_from_vbat(4.40) == 100
-    assert percent_from_vbat(3.75) == 35 and percent_from_vbat(4.0) == 72
+    assert percent_from_vbat(2.9) == 0 and percent_from_vbat(4.5) == 100
+    assert percent_from_vbat(3.00) == 0 and percent_from_vbat(4.386) == 100
+    assert percent_from_vbat(3.874) == 50 and percent_from_vbat(4.053) == 70
     vals = [percent_from_vbat(3.4 + i / 100) for i in range(101)]
     assert vals == sorted(vals)
     assert smooth_vbat(3.8, 0) == 3.8 and abs(smooth_vbat(4.0, 30) - 3.9) < 1e-9

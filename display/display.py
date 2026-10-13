@@ -2188,7 +2188,7 @@ def page_battery(data, stale):
     text(700, 332, fmt(b.get('system_voltage_v'), 3, ' V'), 40, bold=True)
     text(60, 345, b.get('status') or 'No battery gauge', 36, MUTED, max_width=560)
     bar(60, 405, 960, b.get('percent'), h=26, color=col)
-    text(60, 460, 'Estimated from battery voltage' if b.get('name') else '', 28, MUTED)
+    text(60, 460, 'Estimated from battery voltage' if '(est.)' in (b.get('name') or '') else 'Fuel gauge: ' + (b.get('name') or ''), 28, MUTED)
     text(80, 560, '\U000F0084', 42, CYAN, anchor='mm', icon=True)
     text(120, 540, 'Charge limit', 36, MUTED)
     charge_lock_button(text, card, LOCK_CHG)

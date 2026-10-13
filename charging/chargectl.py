@@ -14,8 +14,11 @@ TARGET_STATE = "/run/chargectl.target"
 USB_STATE = "/run/chargectl.usb"
 HOT_STATE = "/run/chargectl.hot"
 THERMAL_RESUME_STATE = "/run/chargectl.thermal_resume"
-# same rough OCV table as the dashboard's battery.py (V -> %)
-OCV = [(3.40, 0), (3.60, 10), (3.70, 25), (3.80, 45), (3.90, 60), (4.00, 72), (4.10, 85), (4.25, 95), (4.40, 100)]
+# OCV (V) -> percent: stock Sunwoda 4030 mAh profile at 25 °C (dtbo_a_16, same table as battery/mia3-qg.dts)
+OCV = [(3.000, 0), (3.493, 2), (3.629, 4), (3.697, 6), (3.708, 10), (3.733, 14), (3.773, 20), (3.797, 26),
+       (3.805, 30), (3.818, 36), (3.831, 40), (3.846, 44), (3.865, 48), (3.874, 50), (3.899, 54), (3.950, 58),
+       (3.967, 60), (4.014, 66), (4.053, 70), (4.094, 74), (4.156, 80), (4.223, 86), (4.270, 90), (4.340, 96),
+       (4.386, 100)]
 # Voltage under charge reads ~0.05-0.1 V above rest. Once held, battery voltage sag does not restart charging.
 STOP_ABOVE, FAILSAFE = 0.05, 3.60
 USB_ATTACH, USB_DROP = 4.4, 3.5
@@ -237,18 +240,18 @@ def main():
 if __name__ == "__main__":
     if sys.argv[1:] == ["--selftest"]:
         assert _step("hold", 3.80) == "hold" and _step("hold", 3.60) == "hold"  # no sag-triggered top-up
-        assert _step("charge", 3.85) == "charge" and _step("charge", 3.91) == "hold"
+        assert _step("charge", 3.85) == "charge" and _step("charge", 3.93) == "hold"
         assert _step("hold", 3.95, 80, raised=True) == "charge"
         assert _step("hold", 3.95, 50, raised=False) == "hold"  # lowering the limit does not drain
         assert _step("hold", 3.95, 50, raised=True) == "hold"  # already above a newly raised threshold
-        assert _step("discharge", 3.91) == "hold"  # old drain mode migrates to hold
+        assert _step("discharge", 3.93) == "hold"  # old drain mode migrates to hold
         assert _step("hold", 3.5) == "charge"  # low-battery failsafe
         assert step("charge", 3.70, 46) == ("hold", True)        # heat beats low voltage
         assert step("hold", 3.70, 42, hot=True) == ("hold", True)  # hysteresis: still hot until < 40
         assert step("hold", 3.70, 39, hot=True, resume_charge=True) == ("charge", False)
         assert step("hold", 3.70, 39, hot=True) == ("hold", False)  # limit hold stays latched after cooling
         assert step("charge", 3.85, 44) == ("charge", False)
-        assert abs(volts_for(50) - 3.833) < 0.001 and volts_for(100) == 4.40 and volts_for(10) == 3.60
+        assert abs(volts_for(50) - 3.874) < 0.001 and volts_for(100) == 4.386 and volts_for(10) == 3.708
         assert _step("hold", 3.70, 100) == "charge" and _step("charge", 4.3, 100) == "charge"
         assert _step("hold", 4.00, 80) == "hold"  # voltage sag does not trigger a recharge
         assert step("hold", 3.70, usb=False) == ("charge", False)
@@ -260,7 +263,7 @@ if __name__ == "__main__":
         assert usb_present(4.0, previous=True) is True and usb_present(4.0, previous=False) is False
         assert charging_wanted("hold", 3.70, 80, True, True)  # raised limit while already hot resumes when cool
         assert low_chime(True, 3.55) == (False, True) and low_chime(False, 3.55) == (False, False)
-        assert low_chime(False, 3.65) == (False, False) and low_chime(False, 3.75) == (True, False)
+        assert low_chime(False, 3.65) == (False, False) and low_chime(False, 3.78) == (True, False)
         assert low_chime(True, 0.0) == (True, False)  # unreadable vbat never chimes
         print("ok")
     else:
