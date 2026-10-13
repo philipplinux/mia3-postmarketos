@@ -2029,7 +2029,7 @@ def page_battery(data, stale):
         hot = th.get('over', 0) > 0
         card(30, 1350, 1020, 240, outline=AMBER if hot else None)
         text(60, 1375, 'Thermal guard', 36, MUTED)
-        text(1020, 1368, f"{th['sensor'].replace('iio:', '')} {th['temp_c']:.1f} °C", 44, AMBER if hot else TEXT, bold=True, anchor='ra', max_width=650)
+        text(1020, 1368, f"{th['sensor'].split(':')[-1].removesuffix('-thermal')} {th['temp_c']:.1f} °C", 44, AMBER if hot else TEXT, bold=True, anchor='ra', max_width=650)
         text(60, 1430, th.get('last_event') or 'no thermal events', 30, AMBER if hot else MUTED, max_width=960)
         if th.get('charge_mode'):
             text(60, 1480, f"charger: {th['charge_mode']}", 30, MUTED)
