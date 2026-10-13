@@ -1,0 +1,7 @@
+#!/bin/sh
+# Wi-Fi needs the modem DSP, which rmtfs starts; tqftpserv serves it its files
+systemctl enable rmtfs.service tqftpserv.service mia3-display.service chargectl.service mia3-qg.service \
+	mia3-tsens.service mia3-audio.service thermal-guard.service mia3-usb-rebind.service getty@tty1.service getty@tty2.service 2>/dev/null || true
+systemctl --global enable mia3-dashboard.service 2>/dev/null || true
+for k in /lib/modules/*; do depmod -a "${k##*/}"; done
+exit 0

@@ -1,0 +1,13 @@
+# The host sees the initramfs's USB gadget but no carrier once the rootfs takes usb0 over (until a replug or a
+# host-side usbreset). Re-binding the gadget after NetworkManager is up makes the host enumerate it afresh.
+[Unit]
+Description=Re-attach the USB network gadget for the host
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'for g in /sys/kernel/config/usb_gadget/*/UDC; do u=$$(cat "$$g"); [ -n "$$u" ] || continue; echo "" > "$$g"; sleep 1; echo "$$u" > "$$g"; done'
+
+[Install]
+WantedBy=multi-user.target

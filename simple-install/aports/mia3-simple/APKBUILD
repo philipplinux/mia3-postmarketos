@@ -1,0 +1,45 @@
+# The Mi A3 setup in one package: ECM USB networking + its NM profile, fbcon cmdline, optional Wi-Fi profile, and
+# extras.tar (staged by build.sh from this repo): dashboard, status display, charge control, fuel gauge, sensors,
+# thermal guard, shell/sway defaults and the out-of-tree kernel modules.
+pkgname=mia3-simple
+pkgver=1
+pkgrel=6
+pkgdesc="Mi A3 server base config"
+url="https://github.com/philipplinux/mia3-postmarketos"
+arch="aarch64"
+license="MIT"
+options="!check"
+install="$pkgname.post-install $pkgname.post-upgrade"
+depends="
+	linux-nura-qcom-sm61x5 rsync qrtr rmtfs tqftpserv
+	python3 py3-pillow font-opensans font-droid networkmanager-cli bluez bluez-deprecated bluez-tools
+	v4l-utils iputils py3-dbus-fast font-nerd-fonts-symbols openssh-client nftables
+	clang lld llvm make kmod dtc i2c-tools alsa-utils
+	bash starship fzf fd font-jetbrains-mono-nerd sway foot wvkbd grim
+	tailscale tailscale-systemd
+"
+source="
+	deviceinfo
+	90-mia3-network.modules
+	90-mia3-usb.conf
+	mia3-usb.nmconnection
+	50-mia3-fbcon.conf
+	wifi.nmconnection
+	extras.tar
+	mia3-usb-rebind.service
+"
+
+package() {
+	install -Dm644 "$srcdir/deviceinfo" "$pkgdir/etc/deviceinfo"
+	install -Dm644 "$srcdir/90-mia3-network.modules" "$pkgdir/usr/share/mkinitfs/modules/90-mia3-network.modules"
+	install -Dm644 "$srcdir/90-mia3-usb.conf" "$pkgdir/etc/NetworkManager/conf.d/90-mia3-usb.conf"
+	install -Dm600 "$srcdir/mia3-usb.nmconnection" "$pkgdir/etc/NetworkManager/system-connections/mia3-usb.nmconnection"
+	install -Dm644 "$srcdir/50-mia3-fbcon.conf" "$pkgdir/etc/kernel-cmdline.d/50-mia3-fbcon.conf"
+	# empty unless WIFI_SSID was set at build time
+	[ -s "$srcdir/wifi.nmconnection" ] && install -Dm600 "$srcdir/wifi.nmconnection" \
+		"$pkgdir/etc/NetworkManager/system-connections/mia3-wifi.nmconnection"
+	install -Dm644 "$srcdir/mia3-usb-rebind.service" "$pkgdir/usr/lib/systemd/system/mia3-usb-rebind.service"
+	install -d "$pkgdir/usr/lib/systemd/system/multi-user.target.wants"
+	ln -s ../mia3-usb-rebind.service "$pkgdir/usr/lib/systemd/system/multi-user.target.wants/mia3-usb-rebind.service"
+	cp -R "$srcdir/extras/." "$pkgdir/"   # plain cp: files end up root-owned under fakeroot
+}

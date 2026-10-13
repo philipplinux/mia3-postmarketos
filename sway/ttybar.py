@@ -41,7 +41,7 @@ def click(line):
     except ValueError:
         return
     if n == FBCON_TAB:
-        fd = os.open('/dev/tty', os.O_RDWR)    # sway's controlling tty (tty5) may switch VTs
+        fd = os.open('/dev/tty', os.O_RDWR)    # sway's controlling tty (tty2) may switch VTs
         try:
             fcntl.ioctl(fd, 0x5606, 1)          # VT_ACTIVATE
         finally:

@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1050 470" font-family="system-ui,-apple-system,Segoe UI,sans-serif">
+  <style>
+    .bg{fill:#ffffff} .t{fill:#1f2328} .m{fill:#59636e} .box{fill:#f6f8fa;stroke:#d0d7de}
+    .ln{stroke:#8c959f;stroke-width:2;fill:none}
+    .g{fill:#dafbe1;stroke:#1a7f37} .gt{fill:#1a7f37}
+    .b{fill:#ddf4ff;stroke:#0969da} .bt{fill:#0969da}
+    .o{fill:#fff1e5;stroke:#bc4c00} .ot{fill:#bc4c00}
+    @media (prefers-color-scheme: dark){
+      .bg{fill:#0d1117} .t{fill:#e6edf3} .m{fill:#9198a1} .box{fill:#161b22;stroke:#3d444d}
+      .ln{stroke:#656c76}
+      .g{fill:#0f2d1a;stroke:#3fb950} .gt{fill:#3fb950}
+      .b{fill:#0c2d4b;stroke:#4493f8} .bt{fill:#4493f8}
+      .o{fill:#3a1f0b;stroke:#db6d28} .ot{fill:#db6d28}
+    }
+    rect{stroke-width:1.5} .h{font-weight:600;font-size:15px} .s{font-size:12.5px}
+  </style>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#8c959f"/></marker></defs>
+  <rect class="bg" width="1050" height="470" stroke="none"/>
+  <text class="t" x="525" y="32" text-anchor="middle" font-size="19" font-weight="700">Install paths: postmarketOS on the Mi A3</text>
+
+  <!-- start -->
+  <rect class="box" x="20" y="185" width="150" height="100" rx="10"/>
+  <text class="t h" x="95" y="220" text-anchor="middle">Mi A3</text>
+  <text class="m s" x="95" y="242" text-anchor="middle">stock Android 11</text>
+  <text class="m s" x="95" y="260" text-anchor="middle">bootloader unlocked</text>
+
+  <path class="ln" d="M170 235 C200 235 200 110 230 110" marker-end="url(#a)"/>
+  <rect class="g" x="232" y="58" width="200" height="104" rx="10"/>
+  <text class="gt h" x="248" y="104">3 · Generic build</text>
+  <text class="m s" x="248" y="126">easiest · ~10 min</text>
+  <path class="ln" d="M432 110 L458 110" marker-end="url(#a)"/>
+  <rect class="box" x="460" y="58" width="380" height="104" rx="10"/>
+  <text class="t s" x="476" y="84" font-family="ui-monospace,monospace">download release tar.xz → sh flash.sh</text>
+  <text class="gt s" x="476" y="108" xml:space="preserve">+ simplicity: download and flash, nothing to build</text>
+  <text class="ot s" x="476" y="126" xml:space="preserve">− requires a credential update: change the password,</text>
+  <text class="ot s" x="476" y="144" xml:space="preserve">   add your SSH key and Wi-Fi after first boot</text>
+  <path class="ln" d="M840 110 C870 110 870 235 898 235"/>
+  <path class="ln" d="M170 235 C200 235 200 235 230 235" marker-end="url(#a)"/>
+  <rect class="b" x="232" y="183" width="200" height="104" rx="10"/>
+  <text class="bt h" x="248" y="229">2 · Docker build</text>
+  <text class="m s" x="248" y="251">one command · ~1 h first run</text>
+  <path class="ln" d="M432 235 L458 235" marker-end="url(#a)"/>
+  <rect class="box" x="460" y="183" width="380" height="104" rx="10"/>
+  <text class="t s" x="476" y="209" font-family="ui-monospace,monospace">sh simple-install/mia3.sh</text>
+  <text class="gt s" x="476" y="233" xml:space="preserve">+ built with your own credentials, parameters and keys</text>
+  <text class="gt s" x="476" y="251" xml:space="preserve">   (user, password, SSH key, Wi-Fi) plus the full setup</text>
+  <text class="ot s" x="476" y="269" xml:space="preserve">− needs Docker and a ~1 h first build</text>
+  <path class="ln" d="M840 235 C870 235 870 235 898 235" marker-end="url(#a)"/>
+  <path class="ln" d="M170 235 C200 235 200 360 230 360" marker-end="url(#a)"/>
+  <rect class="o" x="232" y="308" width="200" height="104" rx="10"/>
+  <text class="ot h" x="248" y="354">1 · From scratch</text>
+  <text class="m s" x="248" y="376">by hand · an afternoon</text>
+  <path class="ln" d="M432 360 L458 360" marker-end="url(#a)"/>
+  <rect class="box" x="460" y="308" width="380" height="104" rx="10"/>
+  <text class="t s" x="476" y="334" font-family="ui-monospace,monospace">latest pmaports + this repo's patches</text>
+  <text class="gt s" x="476" y="358" xml:space="preserve">+ latest postmarketOS, built yourself with these patches</text>
+  <text class="ot s" x="476" y="376" xml:space="preserve">− the most work: every step by hand,</text>
+  <text class="ot s" x="476" y="394" xml:space="preserve">   follow "From stock to here"</text>
+  <path class="ln" d="M840 360 C870 360 870 235 898 235"/>
+  <rect class="box" x="900" y="175" width="135" height="120" rx="10"/>
+  <text class="t h" x="967" y="207" text-anchor="middle">postmarketOS</text>
+  <text class="m s" x="967" y="229" text-anchor="middle">slot b + userdata</text>
+  <text class="m s" x="967" y="255" text-anchor="middle">Android stays</text>
+  <text class="m s" x="967" y="273" text-anchor="middle">on slot a</text>
+  <text class="m s" x="525" y="450" text-anchor="middle">all three: ssh over USB to 172.16.42.1 after first boot</text>
+</svg>

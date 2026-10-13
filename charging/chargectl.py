@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Charge to a battery-voltage limit, then hold until USB is unplugged or the limit is raised.
 
-No fuel-gauge driver is enabled, so the selected percentage is estimated from battery voltage.
+The limit is a battery voltage (OCV table below), independent of the mia3-qg fuel gauge.
+The USB input current limit follows what the Type-C source advertises (default 500 mA otherwise).
 USB input remains enabled while holding; no controller mode deliberately drains the battery.
 Unreadable temperatures count as hot, and a low-battery failsafe resumes charging.
 """
@@ -19,13 +20,16 @@ OCV = [(3.000, 0), (3.493, 2), (3.629, 4), (3.697, 6), (3.708, 10), (3.733, 14),
        (3.805, 30), (3.818, 36), (3.831, 40), (3.846, 44), (3.865, 48), (3.874, 50), (3.899, 54), (3.950, 58),
        (3.967, 60), (4.014, 66), (4.053, 70), (4.094, 74), (4.156, 80), (4.223, 86), (4.270, 90), (4.340, 96),
        (4.386, 100)]
-# Voltage under charge reads ~0.05-0.1 V above rest. Once held, battery voltage sag does not restart charging.
-STOP_ABOVE, FAILSAFE = 0.05, 3.60
+# Voltage under charge reads above rest (~0.1 V at 500 mA, more at 3 A). Before holding, charging pauses RELAX s and
+# the resting voltage decides; the measured offset is then subtracted while charging. Once held, battery voltage sag
+# does not restart charging.
+STOP_ABOVE, FAILSAFE, RELAX = 0.05, 3.60, 5
 USB_ATTACH, USB_DROP = 4.4, 3.5
 LOW, LOW_REARM = 10, 20  # %: audio/mia3-chime "low" once below LOW, again only after back above LOW_REARM
 HOT, COOL = 45.0, 40.0  # °C: stop charging at HOT, allow it again below COOL
 TEMPS = ("chg_temp", "quiet_therm", "xo_therm")
 SWITCH = {"charge": ("1", "0"), "hold": ("0", "0")}  # charging_enabled, usb_suspend; input is never suspended
+ICL_MAX = 3000  # mA, PMI632 input limit
 STOP = False
 
 
@@ -118,6 +122,16 @@ def usb_present(volts, role=None, previous=None):
     return previous if previous is not None else volts >= (USB_ATTACH + USB_DROP) / 2
 
 
+def source_ma():
+    """Current the Type-C source advertises (tcpm), mA; 0/None for a plain USB port."""
+    for f in glob.glob("/sys/class/power_supply/tcpm-source-psy-*/current_max"):
+        try:
+            return int(open(f).read()) // 1000
+        except (OSError, ValueError):
+            pass
+    return None
+
+
 def temp():
     vals = []
     for name in TEMPS:
@@ -154,6 +168,11 @@ def as_bool(value):
     return value == "1"
 
 
+def relaxed(v_charge, v_rest, target):
+    """After a pause at the limit: (keep charging?, voltage offset caused by the charge current)."""
+    return v_rest < volts_for(target), max(0.0, v_charge - v_rest)
+
+
 def charging_wanted(mode, v, target, usb, raised):
     """Whether thermal protection is interrupting a charge cycle that should resume when cool."""
     if not usb:
@@ -181,6 +200,8 @@ def main():
     previous_target = int(previous_target) if previous_target and previous_target.isdigit() else None
     armed = True
     first = True
+    last_icl = None
+    ir = 0.0  # V: charge-current offset, measured at each pause
     while not STOP:
         target = load_conf()
         try:
@@ -196,6 +217,14 @@ def main():
         usb = usb_present(usb_voltage(), usb_role(), previous_usb if previous_usb is not None else mode == "hold")
         if usb is None:
             usb = mode == "hold"
+        icl = min(source_ma() or 0, ICL_MAX) if usb else 0
+        if icl >= 100 and icl != last_icl:
+            try:
+                open(P + "usb_icl_ma", "w").write(str(icl))
+                print(f"USB input limit {icl} mA", flush=True)
+            except OSError as ex:  # old module without usb_icl_ma: stays at the 500 mA default
+                print("usb_icl_ma:", ex, flush=True)
+        last_icl = icl
         raised = previous_target is not None and target > previous_target
         step_mode = mode
         if mode == "discharge":
@@ -211,7 +240,20 @@ def main():
             except OSError:
                 pass
         resume_after_thermal = hot and not (t >= HOT) and thermal_resume
-        new, now_hot = step(step_mode or "charge", v, t, hot, target, usb, raised, resume_after_thermal)
+        vs = v - ir if (step_mode or "charge") == "charge" else v
+        new, now_hot = step(step_mode or "charge", vs, t, hot, target, usb, raised, resume_after_thermal)
+        if mode == "charge" and new == "hold" and not now_hot and usb and target < 100:
+            apply("hold")
+            time.sleep(RELAX)
+            try:
+                v_rest = vbat()
+            except Exception:
+                v_rest = v
+            keep, ir = relaxed(v, v_rest, target)
+            print(f"{v:.3f} V charging, {v_rest:.3f} V at rest: {'below' if keep else 'at'} the limit", flush=True)
+            if keep:
+                apply("charge")
+                new = "charge"
         if now_hot:
             stop = volts_for(target) + STOP_ABOVE
             if not usb or v >= stop:
@@ -254,6 +296,8 @@ if __name__ == "__main__":
         assert abs(volts_for(50) - 3.874) < 0.001 and volts_for(100) == 4.386 and volts_for(10) == 3.708
         assert _step("hold", 3.70, 100) == "charge" and _step("charge", 4.3, 100) == "charge"
         assert _step("hold", 4.00, 80) == "hold"  # voltage sag does not trigger a recharge
+        assert relaxed(3.949, 3.83, 50) == (True, 3.949 - 3.83) and relaxed(3.95, 3.90, 50)[0] is False
+        assert relaxed(3.80, 3.85, 50) == (True, 0.0)  # a rest reading above the charge reading never goes negative
         assert step("hold", 3.70, usb=False) == ("charge", False)
         assert usb_present(5.0) is True and usb_present(0.0, previous=True) is False
         assert usb_present(0.0, role="sink", previous=True) is False  # VBUS drop wins over stale sink role

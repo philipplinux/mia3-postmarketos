@@ -56,13 +56,13 @@ if [ -f "$R/display/54_mia3_dashboard.nft" ]; then
 fi
 run sudo systemctl daemon-reload
 run sudo systemctl enable --now mia3-display.service
-if [ "$SHELLSETUP" = 1 ]; then   # sway terminal on tty5 (second power-key view), fbcon autologin on tty1 (tab 4)
-    for t in 1 5; do
+if [ "$SHELLSETUP" = 1 ]; then   # sway on tty2 (tabs tty2-4, second power-key view), fbcon autologin on tty1
+    for t in 1 2; do
         run sudo install -D -m644 "$R/display/getty-autologin.conf" "/etc/systemd/system/getty@tty$t.service.d/autologin.conf"
     done
     run sudo systemctl daemon-reload
-    run sudo systemctl enable getty@tty1.service getty@tty5.service
-    run sudo systemctl disable getty@tty2.service getty@tty3.service getty@tty4.service
+    run sudo systemctl enable getty@tty1.service getty@tty2.service
+    run sudo systemctl disable getty@tty3.service getty@tty4.service getty@tty5.service
 fi
 
 say "dashboard"
@@ -122,12 +122,21 @@ else
     run sudo install -m644 "$R/thermal-sensors/mia3-tsens.service" "$R/audio/mia3-audio.service" -t /etc/systemd/system
     run sudo systemctl daemon-reload
     run sudo systemctl enable mia3-tsens.service
+    if [ -f "$R/thermal-sensors/qcom-spmi-adc-tm5.ko" ]; then   # quiet/xo-thermal fix, overrides the stock module
+        run sudo install -D -m644 "$R/thermal-sensors/qcom-spmi-adc-tm5.ko" "/lib/modules/$(uname -r)/updates/qcom-spmi-adc-tm5.ko"
+        run sudo depmod -a
+    fi
     if [ -f "$X/mia3-audio/snd-soc-sm8250.ko" ]; then
         run sudo systemctl enable mia3-audio.service
     else
         echo "mia3-audio not enabled: the q6/sm8250 modules are missing from $X/mia3-audio (audio/README.md 'Speaker card')"
     fi
 fi
+
+say "usb rebind"   # re-enumerates the USB gadget after boot so ssh over USB works without a replug
+run sudo install -D -m644 "$R/simple-install/aports/mia3-simple/mia3-usb-rebind.service" /etc/systemd/system/mia3-usb-rebind.service
+run sudo systemctl daemon-reload
+run sudo systemctl enable mia3-usb-rebind.service
 
 say "thermal guard"
 run sudo install -D -m755 "$R/thermal-guard/thermal-guard.py" /usr/local/lib/thermal-guard/thermal-guard.py
@@ -153,19 +162,25 @@ else
     run install -D -m755 "$R/sway/ttybar.py" "$HOME/.config/sway/ttybar.py"
     run install -D -m755 "$R/sway/respawn.sh" "$HOME/.config/sway/respawn.sh"
     run install -D -m644 "$R/sway/foot.ini" "$HOME/.config/foot/foot.ini"
-    echo "note: sway starts on tty5 at the next login there (sudo systemctl restart getty@tty5)"
-    [ -d "$HOME/.local/share/blesh" ] || echo "note: ble.sh not installed, see README 'Shell' (github.com/akinomyoga/ble.sh -> ~/.local/share/blesh)"
+    echo "note: sway starts on tty2 at the next login there (sudo systemctl restart getty@tty2)"
+    # pmbootstrap gives the user ash, which skips .bash_profile: hand interactive logins to bash
+    [ -e "$HOME/.profile" ] || run sh -c "printf '%s\\n' 'case \$- in *i*) [ -z \"\$BASH_VERSION\" ] && command -v bash >/dev/null && exec bash -l;; esac' > '$HOME/.profile'"
+    if [ ! -d "$HOME/.local/share/blesh" ]; then
+        run install -d "$HOME/.local/share/blesh"
+        [ "$DRY" = 1 ] || curl -fsSL https://github.com/akinomyoga/ble.sh/releases/download/v0.4.0-devel3/ble-0.4.0-devel3.tar.xz \
+            | tar -C "$HOME/.local/share/blesh" --strip-components=1 -xJf -
+    fi
     [ -f "$HOME/.config/starship-plain.toml" ] || run sh -c "starship preset plain-text-symbols -o '$HOME/.config/starship-plain.toml'"
 fi
 
 say "not automated"
 echo "- Bluetooth agent: not installed (the display has its own pairing popup); bluetooth/bt-agent.service is for display-less setups"
 echo "- Firmware: deploy.sh copies it from the private repo, else README 'Kernel and pmaports' (firmware/extract-firmware.sh)"
-echo "- q6/sm8250 audio modules in /lib/modules/\$(uname -r)/extra/mia3-audio: audio/README.md 'Speaker card'"
+echo "- q6/sm8250 audio modules (the simple-install image has them) in /lib/modules/\$(uname -r)/extra/mia3-audio: audio/README.md 'Speaker card'"
 echo "- Kernel/dtb: README 'Boot image with the dtb' (flash from a PC with fastboot)"
 
 say "service states"
-for u in mia3-display mia3-tsens mia3-audio mia3-qg chargectl thermal-guard nftables getty@tty5; do
+for u in mia3-display mia3-tsens mia3-audio mia3-qg chargectl thermal-guard nftables mia3-usb-rebind getty@tty2; do
     printf '%-16s %s\n' "$u" "$(systemctl is-active "$u" 2>&1 || true)"
 done
 printf '%-16s %s\n' mia3-dashboard "$(systemctl --user is-active mia3-dashboard 2>&1 || true)"

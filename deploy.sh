@@ -17,10 +17,11 @@ if [ "${NOBUILD:-0}" != 1 ]; then
         export ARCH=arm64 LLVM=1 KBUILD_MODPOST_WARN=1   # cross build: the PC is x86
         for d in charging battery audio; do make -s -C /m/$d KDIR=/src; done
         cp "$(KDIR=/src sh /m/thermal-sensors/build.sh | tail -n1)" /m/thermal-sensors/
+        cp "$(KDIR=/src sh /m/thermal-sensors/build-adc-tm5.sh | tail -n1)" /m/thermal-sensors/   # quiet/xo-thermal fix
         chown -R "$U" /m/charging /m/battery /m/audio /m/thermal-sensors /src   # container runs as root'
 fi
 
-rsync -a --delete --exclude .git "$R/" "$H:projects/mia3-postmarketos/"
+rsync -a --delete --exclude .git --exclude /simple-install/cache "$R/" "$H:projects/mia3-postmarketos/"
 FW=
 if [ -d "$PRIVATE/firmware" ]; then
     rsync -a "$PRIVATE/firmware/" "$H:projects/mia3-firmware/"

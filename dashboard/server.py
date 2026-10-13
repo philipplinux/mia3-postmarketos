@@ -103,7 +103,7 @@ def battery_info(sys_root: Path) -> dict[str, Any]:
         gauge = {
             "available": True,
             "name": uevent.get("NAME", path.name),
-            "percent": capacity,
+            "percent": smooth_pct(capacity) if capacity is not None else None,
             "status": value("STATUS"),
             "temperature_c": round(temp / 10, 1) if temp is not None else None,
             "voltage_v": round(voltage / 1_000_000, 3) if voltage is not None else None,
@@ -120,7 +120,7 @@ def battery_info(sys_root: Path) -> dict[str, Any]:
             "temperature_c": None, "voltage_v": None, "current_ma": None, "present": None}
 
 
-from battery import charge_conf, iio_battery, set_charge_conf, usb_input_current_ma
+from battery import charge_conf, iio_battery, smooth_pct, set_charge_conf, usb_input_current_ma
 
 SD_PATH = "/mnt/sd"
 LISTEN_CONF = "/var/lib/mia3-dashboard/listen.json"  # {"wifi","usb","tailscale": bool}, set on the phone's Network page

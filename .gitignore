@@ -10,3 +10,4 @@ Module.symvers
 modules.order
 *.dtbo
 audio/spdif_transmitter.c
+__pycache__/

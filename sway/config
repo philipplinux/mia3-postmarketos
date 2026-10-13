@@ -1,6 +1,6 @@
-# Phone GPU terminal on tty5 (~/.config/sway/config): tabs tty2-tty4 are workspaces 2-4, each with a foot shell,
+# Phone GPU terminal on tty2 (~/.config/sway/config): tabs tty2-tty4 are workspaces 2-4, each with a foot shell,
 # tty1 = the stock fbcon console on VT 1 (kernel messages)
-# The shells sit above the wvkbd touch keyboard. Started from ~/.bash_profile on tty5; the power key stays with mia3-display.
+# The shells sit above the wvkbd touch keyboard. Started from ~/.bash_profile on tty2; the power key stays with mia3-display.
 output DSI-1 scale 2 bg #000000 solid_color
 input type:touch map_to_output DSI-1
 seat * hide_cursor 1000

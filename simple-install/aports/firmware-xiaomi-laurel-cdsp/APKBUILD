@@ -1,0 +1,16 @@
+# Replaces pmaports/firmware-xiaomi-laurel-cdsp for the simple install: build.sh extracts every blob
+# (modem, CDSP, Wi-Fi board file, GPU zap shader, Bluetooth) from the official ROM into fw.tar.
+pkgname=firmware-xiaomi-laurel-cdsp
+pkgver=3
+pkgrel=0
+pkgdesc="Mi A3 firmware from the official V12.0.26.0.RFQMIXM fastboot ROM"
+url="https://xmfirmwareupdater.com/archive/miui/laurel/"
+arch="aarch64"
+license="proprietary"
+options="!strip !check !archcheck"
+source="fw.tar"
+
+package() {
+	install -d "$pkgdir/usr/lib/firmware"
+	cp -a "$srcdir/fw/." "$pkgdir/usr/lib/firmware/"
+}

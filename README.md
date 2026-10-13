@@ -32,6 +32,92 @@ Web dashboard (port 8090):
 | Fingerprint | not attempted | |
 | Cameras | no | |
 
+## Three ways to install
+
+![Install paths](docs/install-paths.svg)
+
+All three start from an unlocked Mi A3 on stock Android 11 (step 1 of "From stock to here"; unlocking wipes the phone)
+and flash slot b + `userdata`, leaving stock Android on slot a.
+
+| Path | You need | Time | Result |
+|---|---|---|---|
+| **3. Generic ready build (easiest)** | fastboot | ~10 min | Simplicity: download and flash. Requires a credential update: log in as `user` / `changeme`, change the password, add your SSH key and Wi-Fi |
+| 2. Docker build | Docker | ~1 h first run | Built with your own credentials, parameters and keys (user, password, SSH key, Wi-Fi) |
+| 1. From scratch | pmbootstrap, a kernel tree | an afternoon | Latest postmarketOS, built yourself with this repo's patches; every step by hand, see "From stock to here" |
+
+### Before any path
+
+1. **Unlock the bootloader** (wipes the phone): in Android enable Developer options → OEM unlocking, boot to fastboot
+   (power off, then Volume down + Power), run `fastboot flashing unlock`, confirm on the phone.
+2. **PC:** install `fastboot` (Fedora/Arch `android-tools`, Debian/Ubuntu `fastboot`). Paths 1 and 2 also need Docker.
+
+After any path the phone is at `172.16.42.1` over USB (the PC gets `172.16.42.2`). tty1 is a plain console and tty2 is
+sway (tabs tty2-4), both logged in automatically. The power key cycles dashboard / tty1 / sway / screen off.
+
+### 3. Generic ready build
+
+New to this? Follow the [easy install guide](docs/easy-install.md): every click explained, Windows and Mac included.
+
+1. Download `mia3-postmarketos-generic-<date>.tar.xz` from the releases page and unpack it.
+2. Boot the phone into fastboot, plug in USB.
+3. Run `sh flash.sh` in the unpacked folder and type `yes`.
+4. Wait about a minute, then run `ssh user@172.16.42.1` (password `changeme`).
+5. **Change the password:** `passwd` (it is also the sudo password).
+6. **Add your SSH key** from the PC: `ssh-copy-id user@172.16.42.1`.
+7. **Wi-Fi:** use the Network tab on the phone's screen, or `sudo nmcli device wifi connect <ssid> password <psk>`.
+8. **Tailscale (optional):** `sudo tailscale up` and open the printed link. It is installed but not logged in.
+
+Everything else is already set up: kernel, `k7.dtb`, firmware from the official ROM, status display, web dashboard
+(port 8090), 50 % charge limit, fuel gauge, CPU/GPU sensors, speaker, thermal guard, bash + starship + ble.sh, sway.
+Build the same tarball yourself with `sh simple-install/mia3.sh generic`
+(writes `simple-install/cache/mia3-postmarketos-generic-<date>.tar.xz`).
+
+### 2. Docker build with your own credentials
+
+Same image as path 3, but your user, password, SSH keys and Wi-Fi are baked in, so nothing is left to do after the flash.
+
+1. Clone this repo on the PC.
+2. Boot the phone into fastboot, plug in USB.
+3. Run, with your values:
+   ```sh
+   PMOS_USER=me PASSWORD='something-long' WIFI_SSID=myssid WIFI_PSK='secret' sh simple-install/mia3.sh
+   ```
+4. Type `yes` at the flash prompt. The script waits for the phone and prints the service states.
+5. Run `ssh me@172.16.42.1` with your own key.
+
+| Variable | Default | What |
+|---|---|---|
+| `PMOS_USER` | `philipp` | login user |
+| `PASSWORD` | `changeme` | user and sudo password |
+| `WIFI_SSID`, `WIFI_PSK` | empty | Wi-Fi joined at first boot |
+| SSH keys | every `~/.ssh/*.pub` | copied to `simple-install/cache/ssh/` and into `authorized_keys` |
+
+The first run takes about an hour. It downloads the official fastboot ROM `V12.0.26.0.RFQMIXM`
+([archive](https://xmfirmwareupdater.com/archive/miui/laurel/), ~2.4 GB), extracts the firmware, builds the modules and
+the image. Later runs reuse `simple-install/cache/` and the Docker volume `mia3-work`. Run single steps with
+`sh simple-install/mia3.sh fetch|build|flash|check|shell`. The script also adds a generated
+`simple-install/cache/ssh/id_ed25519`. Once your own key works, delete its `mia3-simple-install` line from
+`~/.ssh/authorized_keys` on the phone.
+
+### 1. From scratch
+
+Latest pmaports, every step by hand, for when you want to change the kernel or packages. Follow "From stock to here"
+below. Its last step, `sh deploy.sh <ssh-host>`, installs the same setup as the image onto a running pmOS.
+
+### microSD card
+
+The slot works out of the box: an inserted card appears as `/dev/mmcblk0p1` (ext4, exfat, vfat and ntfs3 all work).
+To mount it at every boot, and not hang the boot when no card is inserted:
+
+```sh
+sudo mkdir -p /mnt/sd
+echo 'UUID=<uuid from blkid> /mnt/sd auto nofail,x-systemd.automount,x-systemd.device-timeout=5 0 0' | sudo tee -a /etc/fstab
+sudo systemctl daemon-reload && ls /mnt/sd
+```
+
+For an ext4 card, `sudo chown "$USER": /mnt/sd` once so your user can write to it. `/mnt/sd` is also where the
+display's Folders browser and the web dashboard's SD card look.
+
 ## From stock to here
 
 Start: stock Android 11, slot b. pmOS replaces slot b and `userdata`; stock stays on slot a, so firmware can still be
@@ -104,7 +190,8 @@ sh install.sh [--no-kernel-module] [--no-shell] [--dry-run]
 Idempotent. Installs the apk packages above (not `firmware/`, `pmbootstrap`, `docker`), then display (+ nft rule), dashboard
 (to `~/projects/mia3-dashboard/dashboard/`, user unit path follows `$HOME`, linger on), charging, fuel gauge, speaker and
 temperature sensors (prebuilt `.ko` from `deploy.sh`, or charging builds with `KDIR=` on the phone), thermal-guard and shell (existing `~/.bashrc` saved as `.bak`).
-`--dry-run` only prints the commands. Not automated: the q6/sm8250 audio modules, kernel/dtb flashing, Bluetooth agent, ble.sh.
+`--dry-run` only prints the commands. It also installs the adc-tm5 fix, the USB rebind unit and ble.sh, and adds a `~/.profile` that hands ash logins to bash.
+Not automated: the q6/sm8250 audio modules (the path 2/3 image has them), kernel/dtb flashing, Bluetooth agent.
 
 ## Kernel and pmaports
 
@@ -201,7 +288,7 @@ on tty1, swipe down from the top for its tab strip:
 
 `install.sh` sets it up: `sway/config`, `ttybar.py`, `respawn.sh` → `~/.config/sway/`, `sway/foot.ini` → `~/.config/foot/`,
 `display/getty-autologin.conf` → `getty@tty{1,5}.service.d/autologin.conf`, getty on tty2-4 disabled;
-`.bash_profile` execs sway on tty5. wvkbd and the foot tabs restart themselves if they die (`respawn.sh`, only while sway is on screen). foot keeps 5000 lines of scrollback; the volume keys scroll it. Without sway running
+`.bash_profile` execs sway on tty2. wvkbd and the foot tabs restart themselves if they die (`respawn.sh`, only while sway is on screen). foot keeps 5000 lines of scrollback; the volume keys scroll it. Without sway running
 tabs tty2-4 fall back to the fbcon console. kmscon was dropped: 10.0 is DRM-only, nothing could draw over it.
 
 Copy `shell/.bashrc` and `shell/.bash_profile` to `~`, `shell/bashrc.d/` to `~/.bashrc.d/`, `shell/starship.toml` to `~/.config/`.

@@ -1,6 +1,7 @@
 """Battery estimate from PMIC IIO ADCs (no fuel gauge driver on the Mi A3)."""
 import json
 import os
+import statistics
 import time
 from collections import deque
 from pathlib import Path
@@ -22,14 +23,24 @@ def percent_from_vbat(v):
 
 
 VBAT = deque()   # (monotonic s, V): % comes from the last 60 s average, a single read jumps with load
+PCT = deque()    # (monotonic s, %): mia3-qg capacity, median of the last 60 s; load spikes read 10-15 % low
+
+
+def _window(q, v, now, window):
+    now = time.monotonic() if now is None else now
+    q.append((now, v))
+    while q[0][0] < now - window:
+        q.popleft()
+    return [x for _, x in q]
 
 
 def smooth_vbat(v, now=None, window=60):
-    now = time.monotonic() if now is None else now
-    VBAT.append((now, v))
-    while VBAT[0][0] < now - window:
-        VBAT.popleft()
-    return sum(x for _, x in VBAT) / len(VBAT)
+    xs = _window(VBAT, v, now, window)
+    return sum(xs) / len(xs)
+
+
+def smooth_pct(p, now=None, window=60):
+    return round(statistics.median(_window(PCT, p, now, window)))
 
 
 def usb_input_current_ma(sys_root):
@@ -123,6 +134,8 @@ def status(plugged):
 
 
 if __name__ == '__main__':
+    assert [smooth_pct(p, now=t) for t, p in enumerate([44, 44, 28, 44, 40])][-1] == 44  # dips don't move it
+    assert smooth_pct(30, now=100) == 30  # old samples age out
     assert percent_from_vbat(2.9) == 0 and percent_from_vbat(4.5) == 100
     assert percent_from_vbat(3.00) == 0 and percent_from_vbat(4.386) == 100
     assert percent_from_vbat(3.874) == 50 and percent_from_vbat(4.053) == 70

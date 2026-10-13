@@ -131,7 +131,8 @@ def render(data, stale=False, cores=False):
         draw_cores(d, text, bar, data)
     else:
         col = batt_head(d, text, 60, 175, 130, b)
-        text(60, 350, b.get('status') or 'No battery gauge', 36, MUTED, max_width=560)
+        ma = b.get('usb_current_ma')
+        text(60, 350, (b.get('status') or 'No battery gauge') + (f" · {ma:.0f} mA in" if ma is not None else ''), 36, MUTED, max_width=560)
         bar(60, 420, 560, b.get('percent'), h=24, color=col)
         temp = th.get('temp_c') if th.get('temp_c') is not None else b.get('temperature_c')
         for i, (label, value, glyph) in enumerate((('Uptime', uptime_text(data.get('uptime_seconds')), '\U000F0954'),
@@ -272,7 +273,7 @@ DRAG_PX = 40
 TTYS = (1, 2, 3, 4)  # tabs: tty1 = fbcon VT 1 (OLD_TAB), tty2-4 = sway workspaces on GPU_VT. Strip on VT 1: swipe down from the top edge to show, tap a tab (hides it) or swipe up
 BAR_DIV = 24         # strip height = panel height / BAR_DIV (65 px on 1560)
 OLD_TAB = 1          # tab showing the fbcon console (VT 1, buffyboard, raw kernel messages)
-GPU_VT = 5           # sway/foot (sway/config), optional: tabs tty2-4; power key: dashboard -> fbcon tty1 -> blank
+GPU_VT = 2           # sway/foot (sway/config), optional: tabs tty2-4; power key: dashboard -> fbcon tty1 -> blank
 VOL_STEP = 600        # volume keys scroll lists by this many px
 SWIPE_PX = 250
 LONG_S = 0.8
@@ -2974,7 +2975,7 @@ class Display:
         self.drm.drmModeGetProperty.restype = ctypes.POINTER(DRMProperty)
         self.drm.drmModeConnectorSetProperty.argtypes = [ctypes.c_int,ctypes.c_uint32,ctypes.c_uint32,ctypes.c_uint64]
         self.connector, self.dpms_property, self.initial_dpms = self.find_dpms()
-        self.drm.drmDropMaster(self.drm_fd)   # first opener is master; sway on tty5 needs it while shown
+        self.drm.drmDropMaster(self.drm_fd)   # first opener is master; sway on tty2 needs it while shown
         self.shown = False
         self.touched = False
         self.view = 'terminal'
@@ -3128,7 +3129,7 @@ class Display:
         self.keyboard(True)
 
     def gpu(self):
-        # sway (DRM) on tty5 with its own keyboard (wvkbd); buffyboard and the tty strip would be hidden under it.
+        # sway (DRM) on tty2 with its own keyboard (wvkbd); buffyboard and the tty strip would be hidden under it.
         self.keyboard(False)
         fcntl.ioctl(self.tty,0x4B3A,0)       # KD_TEXT: the kernel ignores switches away from a KD_GRAPHICS VT
         fcntl.ioctl(self.tty,0x5606,GPU_VT)  # VT_ACTIVATE; no wait, a dead compositor must not hang the loop
