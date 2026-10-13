@@ -140,8 +140,8 @@ Optional **kmscon** on tty2 (Nerd Font prompt): `apk add kmscon kmscon-systemd`,
 The power key then adds it after tty1. kmscon 10 is DRM-only: the strip and touch keyboard can't show over it (tapping the
 top edge still switches), so it is off by default.
 
-Scrollback: fbcon has none, so `.bash_profile` runs tty1–4 inside tmux (`apk add tmux`, `shell/tmux-console.conf` →
-`~/.config/tmux/console.conf`, no status bar). In the terminal view the display turns volume up/down into F11/F12 (uinput
+Scrollback: fbcon has none, so `.bash_profile` runs tty2–4 inside tmux (tty1 stays plain for kernel messages) (`apk add tmux`, `shell/tmux-console.conf` →
+`~/.config/tmux/console.conf`, two blank status lines as a top margin for the rounded corners). In the terminal view the display turns volume up/down into F11/F12 (uinput
 "mia3-display volume keys"): half a page up/down, scrolling past the bottom leaves copy mode.
 
 Copy `shell/.bashrc` and `shell/.bash_profile` to `~`, `shell/bashrc.d/` to `~/.bashrc.d/`, `shell/starship.toml` to `~/.config/`.

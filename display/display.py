@@ -3055,7 +3055,8 @@ def main():
                     raw = os.read(fd, event.size * 32)
                     for offset in range(0, len(raw) - event.size + 1, event.size):
                         _, _, kind, code, value = event.unpack_from(raw, offset)
-                        if kind == 1 and code in (114, 115) and value and display.view == 'terminal' and keys:
+                        if kind == 1 and code in (114, 115) and value and display.view == 'terminal' and keys \
+                                and Path('/sys/class/tty/tty0/active').read_text().strip() != 'tty1':  # tty1: no tmux
                             keys.tap(87 if code == 115 else 88)                  # volume up -> F11 (scroll up)
                         elif kind == 1 and code in (114, 115) and value and display.shown and action is None:
                             for g in (('scrollstart',), ('scroll', VOL_STEP if code == 115 else -VOL_STEP)):
