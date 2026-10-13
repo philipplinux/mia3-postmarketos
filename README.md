@@ -138,7 +138,7 @@ tty2–tty4 autologin: `display/getty-autologin.conf` → `/etc/systemd/system/g
 **GPU terminal on tty5:** sway + foot + wvkbd (`apk add sway foot wvkbd-mobintl grim`). `sway/config` → `~/.config/sway/config`,
 `sway/foot.ini` → `~/.config/foot/foot.ini`, `display/getty-autologin.conf` for `getty@tty5`; `.bash_profile` execs sway on tty5.
 The power key goes dashboard → tty1 → tty5 (when sway runs) → blank; the strip's tty5 tab also switches there (the strip
-itself can't draw over sway's DRM buffer). foot keeps 5000 lines of scrollback; the touch keyboard is wvkbd.
+itself can't draw over sway's DRM buffer). foot keeps 5000 lines of scrollback (volume keys scroll); the touch keyboard is wvkbd.
 kmscon was dropped: 10.0 is DRM-only, so neither the strip nor buffyboard could draw over it.
 
 Scrollback: fbcon has none, so `.bash_profile` runs tty2–4 inside tmux (tty1 stays plain for kernel messages) (`apk add tmux`, `shell/tmux-console.conf` →
