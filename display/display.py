@@ -85,6 +85,7 @@ def uptime_text(up):
 
 
 OV_BATT, OV_NET = (30, 160, 1050, 500), (30, 1190, 1050, 1560)
+OV_CPU = (30, 530, 525, 830)   # Overview CPU tile opens the per-core page
 OV_CONT, OV_PROC = (30, 1590, 525, 2160), (555, 1590, 1050, 2160)
 
 
@@ -783,6 +784,59 @@ def page_ssh(w, data):
     return image
 
 
+CORE_PREV = {}
+
+
+def core_stats():
+    """[(cpu, busy %, MHz, cpufreq policy)] from /proc/stat deltas since the previous call (None on the first)."""
+    out = []
+    for line in Path('/proc/stat').read_text().splitlines()[1:]:
+        f = line.split()
+        if not f[0].startswith('cpu'):
+            break
+        n, t = int(f[0][3:]), [int(v) for v in f[1:9]]
+        tot, idle = sum(t), t[3] + t[4]
+        pt, pi = CORE_PREV.get(n, (tot, idle))
+        CORE_PREV[n] = (tot, idle)
+        base = f'/sys/devices/system/cpu/cpu{n}/cpufreq'
+        try:
+            mhz = int(Path(base, 'scaling_cur_freq').read_text()) // 1000
+        except (OSError, ValueError):
+            mhz = None
+        out.append((n, 100 - (idle - pi) * 100 / (tot - pt) if tot > pt else None, mhz, os.path.realpath(base)))
+    return out
+
+
+def page_cores(w, data):
+    image = Image.new('RGB', IMG, BG)
+    d, text, card, bar = tools(image)
+    back_btn(text, card)
+    text(290, 48, 'CPU cores', 56, bold=True)
+    cpu = data.get('cpu') or {}
+    text(1040, 62, f"total {fmt(cpu.get('percent'), 0, '%')}", 40, MUTED, anchor='ra')
+    groups = {}
+    for c in core_stats():
+        groups.setdefault(c[3], []).append(c)
+    names = ('Little', 'Big') if len(groups) == 2 else tuple(os.path.basename(k) for k in groups)
+    y = 190
+    for name, (pol, cores) in zip(names, groups.items()):
+        try:
+            top = f" · max {int(Path(pol, 'cpuinfo_max_freq').read_text()) / 1e6:.2f} GHz"
+        except (OSError, ValueError):
+            top = ''
+        text(40, y, f"{name} · cpu{cores[0][0]}–{cores[-1][0]}{top}", 34, MUTED)
+        y += 70
+        card(30, y, 1020, len(cores) * 110 + 20)
+        for n, pct, mhz, _ in cores:
+            text(60, y + 30, f'cpu{n}', 38, bold=True)
+            bar(220, y + 48, 470, pct, 20, AMBER if (pct or 0) >= 80 else CYAN)
+            text(850, y + 30, fmt(pct, 0, '%'), 38, anchor='ra')
+            text(1020, y + 34, f'{mhz} MHz' if mhz else '—', 32, MUTED, anchor='ra')
+            y += 110
+        y += 70
+    return image
+
+
 def page_usb(w, data):
     image = Image.new('RGB', IMG, BG)
     d, text, card, bar = tools(image)
@@ -1213,6 +1267,8 @@ class Ui:
                 return [('detail', self.detail)]
             elif hitrow:
                 self.pdetail = (hitrow['pid'], hitrow['start'])
+            elif self.page == 0 and hit(OV_CPU, x, y):
+                self.sub = {'kind': 'cores'}
             elif self.page == 0:
                 for box, page in ((OV_BATT, len(TABS) - 1), (OV_NET, 3), (OV_CONT, 1), (OV_PROC, 2)):
                     if hit(box, x, y):
@@ -1508,7 +1564,8 @@ class Ui:
             image = page_wifi(self.wifi)
         elif self.sub is not None:
             image = {'ssh': page_ssh, 'usb': page_usb, 'bt': page_bt, 'wifi': page_wifiinfo, 'ipcfg': page_ipcfg,
-                     'ir': page_ir, 'saved': page_saved, 'files': page_files}[self.sub['kind']](self.sub, data)
+                     'ir': page_ir, 'saved': page_saved, 'files': page_files,
+                     'cores': page_cores}[self.sub['kind']](self.sub, data)
         elif self.detail:
             image = page_detail(self.detail, self.info, data)
         elif self.pdetail:
@@ -2129,6 +2186,14 @@ def selftest():
     assert ui.page == 1
     assert fmt_size(5) == '5 B' and fmt_size(2048) == '2.0 KiB' and fmt_size(3 << 30) == '3.0 GiB'
     assert fmt_mem(None) == '—' and fmt_mem(45 << 20) == '45M' and fmt_mem(3 << 29) == '1.5G'
+    core_stats(); cs = core_stats()
+    assert cs and all(p is None or 0 <= p <= 100 for _, p, _, _ in cs)
+    ui = Ui()
+    ui.on_gesture(('tap', 200, 700), data, 0)
+    assert ui.sub == {'kind': 'cores'}
+    ui.render(data, False, 0)
+    ui.on_gesture(('tap', 100, 80), data, 0)
+    assert ui.sub is None
     print('selftest ok')
 
 
