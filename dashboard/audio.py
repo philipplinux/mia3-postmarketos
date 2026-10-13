@@ -1,5 +1,5 @@
 """Speaker volume (MAX98937 register 0x0036 over i2c-dev) and a short test tone. Needs the Mi-A3 card
-(audio/bringup.sh), i2c-tools, and the audio group on /dev/snd + /dev/i2c-1 (audio/60-mia3-i2c.rules)."""
+(audio/bringup.sh), i2c-tools, and the audio group on /dev/snd + /dev/i2c-1 (audio/60-mia3-dashboard.rules)."""
 import io
 import math
 import re
@@ -9,6 +9,9 @@ import wave
 
 MAX = 127  # AMP_VOL 0..127 = -16..+15.75 dB
 VOL_FILE = '/var/lib/mia3-audio/volume'  # read by audio/max98937-init.sh at boot
+GAIN_FILE = '/var/lib/mia3-audio/gain'
+# Speaker_Gain 0x003b: PCM gain step in bits 0-2 (0 = mute, n = +3n dB up to +18), PDM bits kept at 0x50
+GAINS = ['Mute', '+3 dB', '+6 dB', '+9 dB', '+12 dB', '+15 dB', '+18 dB']
 ROUTE = 'SEC_MI2S_RX Audio Mixer MultiMedia3'
 _player = None
 
@@ -39,8 +42,9 @@ def audio_info():
     card = _card()
     if card is None:
         return {'available': False}
-    v = _amp(0x00, 0x36, read=True)
+    v, g = _amp(0x00, 0x36, read=True), _amp(0x00, 0x3b, read=True)
     return {'available': True, 'volume': round((v & MAX) * 100 / MAX) if v is not None else None,
+            'gain': g & 7 if g is not None else None, 'gains': GAINS,
             'playing': _player is not None and _player.poll() is None}
 
 
@@ -53,12 +57,27 @@ def set_volume(percent):
     v = round(percent * MAX / 100)
     if _amp(0x00, 0x36, v) is None:
         return False, 'amp write failed (i2c-1 access?)'
-    try:
-        with open(VOL_FILE, 'w') as f:
-            f.write(f'{v}\n')
-    except OSError:
-        pass  # ponytail: volume then resets to the boot default on reboot
+    _save(VOL_FILE, v)
     return True, f'volume {percent}%'
+
+
+def set_gain(step):
+    if _card() is None:
+        return False, 'sound card is not up (run audio/bringup.sh)'
+    if not isinstance(step, int) or isinstance(step, bool) or not 0 <= step < len(GAINS):
+        return False, 'bad gain'
+    if _amp(0x00, 0x3b, 0x50 | step) is None:
+        return False, 'amp write failed (i2c-1 access?)'
+    _save(GAIN_FILE, step)
+    return True, f'speaker gain {GAINS[step]}'
+
+
+def _save(path, value):
+    try:
+        with open(path, 'w') as f:
+            f.write(f'{value}\n')
+    except OSError:
+        pass  # ponytail: the setting then resets to the boot default on reboot
 
 
 def tone(db=-20, secs=1.0, hz=440, rate=48000):

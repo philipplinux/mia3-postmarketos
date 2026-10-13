@@ -39,7 +39,7 @@ driver writes the wrong registers (no sound at all). So the card uses the dummy 
 | `max98937-init.sh` | amp register setup + enable (volume from `/var/lib/mia3-audio/volume`, 0..127 = -16..+15.75 dB) |
 | `bringup.sh` | the whole runtime sequence, as root; reboot to undo |
 | `mia3-audio.service` | runs `bringup.sh` at boot from `/usr/local/lib/mia3-audio/` (ko + scripts there, dtbos in `/lib/firmware`) |
-| `60-mia3-i2c.rules` | `/dev/i2c-1` to group `audio`, so the dashboard can set the volume |
+| `60-mia3-dashboard.rules` | `/dev/i2c-1` to group `audio` (dashboard volume/gain), GPU devfreq governor/max clock writable by group `video` |
 | `play-test.sh` | test beep, -40 dBFS 440 Hz, 1.5 s (`DB=-25` louder, `SILENT=1` plays zeros) |
 
 Order (`bringup.sh`): `mia3_adsp.ko` → APR overlay → q6 modules → ADSP restart → speaker overlay with `ph=` for

@@ -8,10 +8,10 @@ Tested on kernel `linux-nura-qcom-sm61x5` 7.2.3, booting slot b. No warranty: ba
 | `dts/` | Device-tree with cpufreq-hw, Bluetooth (WCN3988 on GENI UART) and the IR blaster. `CPUFREQ.md` has the cpufreq-only write-up |
 | `display/` | Framebuffer + touch UI (root service), icon tab bar: Overview, Containers, Processes, Network page (Wi-Fi details, static IP/DNS, picker, saved networks/forget, SSH, Tailscale, USB modes, Bluetooth with pairing popup, IR remote with d-pad/Home/Back), Files (browse/preview; new folder and delete only under `/home/philipp` and `/mnt/sd`), Power |
 | `bluetooth/` | `bt-agent.service`: headless auto-accept agent (only without the display; the display has its own pairing popup) |
-| `dashboard/` | Web dashboard (user service on port 8090, reachable per interface: see "Web dashboard"): CPU per core/GPU/battery + charge limit/thermals/services/processes/SD |
+| `dashboard/` | Web dashboard (user service on port 8090, reachable per interface: see "Web dashboard"): CPU per core/GPU/battery + charge limit/thermals/services/processes/SD, Audio & GPU card (speaker volume/gain, test tone, GPU governor/max clock) |
 | `charging/` | `pmi632_chg` kernel module (charge on/off, USB suspend) + `chargectl.py` that holds the battery at a set level (default 50 %, `/var/lib/chargectl/chargectl.json` owned by the dashboard user, adjustable on the Power page and the web dashboard) |
 | `thermal-guard/` | Powers the phone off on sustained overheating |
-| `audio/` | Runtime overlays (ADSP, APR/q6, speaker amp, sound card) + `mia3_dtbo.ko` loader; speaker (MAX98937 amp, userspace init) up at boot via `mia3-audio.service` |
+| `audio/` | `mia3-chime` (thermal-guard alert pips, chargectl low-battery chime below 10 %). Runtime overlays (ADSP, APR/q6, speaker amp, sound card) + `mia3_dtbo.ko` loader; speaker (MAX98937 amp, userspace init) up at boot via `mia3-audio.service` |
 | `thermal-sensors/` | TSENS runtime overlay + module: CPU/GPU temperatures on the dashboards |
 | `shell/` | bash + starship + ble.sh + fzf setup (plain-text prompt on the framebuffer console) |
 
@@ -63,7 +63,7 @@ The kernel is built locally from pmaports, not the stock package:
   them from your phone's own stock partitions (`modem_a`, `vendor_a`, `bluetooth_a`, read-only) into `/lib/firmware`:
   modem/CDSP/Wi-Fi, the ath10k `board-2.bin` (via `ath10k-bdenc.py`), the GPU zap shader and Bluetooth.
   Run as root on the phone (`apk add pil-squasher` first); `FW=/tmp/x` tests into another dir.
-  Firmware © Qualcomm / Xiaomi, sourced from the phone's stock Android partitions.
+  Firmware © Qualcomm / Xiaomi, sourced from the phone's stock Android partitions. The owner keeps a copy plus stock images in a separate private repo.
 
 Build: apply the diff and copy the patches into a pmaports checkout at `ec98ddd`, run the extract script (or put its output in the firmware package dir), then
 `pmbootstrap build linux-nura-qcom-sm61x5 firmware-xiaomi-laurel-cdsp device-xiaomi-laurel`.

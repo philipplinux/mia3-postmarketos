@@ -4,7 +4,8 @@
 # speaker gain 0x51 (+3 dB; vendor 0x55 = +15 dB with their DSM limiter). Then I2S slave, 16-bit, 32 BCLK/LRCLK,
 # 48 kHz, amp + global enable. Global enable only latches while BCLK runs, so it is set during 1 s of silence;
 # it then stays set across streams.
-# Volume: register 0x0036, 0..127 = -16..+15.75 dB; kept in /var/lib/mia3-audio/volume.
+# Volume: register 0x0036, 0..127 = -16..+15.75 dB; kept in /var/lib/mia3-audio/volume (dashboard slider).
+# Speaker gain: 0x003b bits 0-2, 0 = mute, n = +3n dB; kept in /var/lib/mia3-audio/gain (default 3 = +9 dB).
 set -e
 modprobe i2c-dev
 V=$(cat /var/lib/mia3-audio/volume 2>/dev/null || echo 48)
@@ -79,7 +80,9 @@ while read -r a v; do w "$a" "$v"; done <<'REGS'
 0027 80
 0039 01
 REGS
+G=$(cat /var/lib/mia3-audio/gain 2>/dev/null || echo 3)
 w 0036 "$(printf %02x "$V")"
+w 003b "$(printf %02x $((0x50 | G)))"
 C=$(grep -m1 Mi-A3 /proc/asound/cards | awk '{print $1}')
 amixer -c"$C" -q cset name='SEC_MI2S_RX Audio Mixer MultiMedia3' on
 timeout 2 aplay -q -D hw:"$C",0 -t raw -f S16_LE -r 48000 -c 2 -d 1 /dev/zero &

@@ -82,8 +82,16 @@ def note(msg):
         pass
 
 
+def chime():
+    try:  # audio/mia3-chime, best effort, never blocks the guard
+        subprocess.Popen(["mia3-chime", "alert"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        pass
+
+
 def shutdown(why):
     note("powering off: " + why)
+    chime()
     subprocess.run(["wall", f"thermal-guard: powering off, {why}"], check=False)
     k = "/var/lib/thermal-guard/"
     try:  # best effort, never delays the poweroff by more than 15 s
@@ -109,6 +117,8 @@ def main():
         since, over = update(since, temps, time.monotonic())
         for n in set(since) - before:
             note(f"over limit: {n} {temps[n]:.1f} °C (limit {limit(n)} °C)")
+        if set(since) - before:
+            chime()
         hottest = max(temps.items(), key=lambda kv: kv[1] - limit(kv[0]), default=("none", 0))
         try:
             open("/run/thermal-guard.status", "w").write(f"{hottest[0]} {hottest[1]:.1f} over={len(since)}\n")

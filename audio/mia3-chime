@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+"""Notification sounds on the Mi A3 speaker: mia3-chime alert|low|test. Quiet on purpose; the amp volume
+(dashboard slider) scales them. Silently does nothing if the card isn't up or is busy. As root or group audio."""
+import math, re, struct, subprocess, sys
+
+RATE = 48000
+ROUTE = 'SEC_MI2S_RX Audio Mixer MultiMedia3'
+# name -> [(Hz or 0 for a gap, seconds, dBFS)]; each tone decays like a soft bell
+SOUNDS = {
+    'alert': [(880, .12, -20), (0, .1, 0), (880, .12, -20), (0, .1, 0), (880, .12, -20)],  # thermal event
+    'low': [(659, .35, -26), (523, .5, -26)],                                              # low battery
+    'test': [(440, 1, -20)],
+}
+
+
+def pcm(parts):
+    out = [0] * int(RATE * .15)  # lead-in: the amp powers up when the I2S clock starts
+    for hz, secs, db in parts:
+        n, a = int(RATE * secs), 10 ** (db / 20) * 32767
+        for i in range(n):
+            env = min(1, i / 480, (n - i) / 480) * math.exp(-3 * i / n)
+            out.append(int(a * env * math.sin(2 * math.pi * hz * i / RATE)) if hz else 0)
+    return b''.join(struct.pack('<hh', s, s) for s in out)
+
+
+def card():
+    try:
+        m = re.search(r'^\s*(\d+) \[.*\]: .*Mi-A3', open('/proc/asound/cards').read(), re.M)
+    except OSError:
+        return None
+    return m and m.group(1)
+
+
+def play(name):
+    c = card()
+    if c is None:
+        return False
+    subprocess.run(['amixer', '-c', c, '-q', 'cset', f'name={ROUTE}', 'on'], capture_output=True, timeout=5)
+    p = subprocess.run(['timeout', '-s', 'KILL', '10', 'aplay', '-q', '-D', f'hw:{c},0', '-t', 'raw',
+                        '-f', 'S16_LE', '-r', str(RATE), '-c', '2'], input=pcm(SOUNDS[name]), capture_output=True)
+    return p.returncode == 0
+
+
+if __name__ == '__main__':
+    if sys.argv[1:] == ['--selftest']:
+        b = pcm(SOUNDS['low'])
+        assert len(b) == 4 * (int(RATE * .15) + int(RATE * .35) + int(RATE * .5))
+        assert max(abs(s) for s in struct.unpack(f'<{len(b) // 2}h', b)) <= 10 ** (-26 / 20) * 32767 + 1
+        print('ok')
+    elif len(sys.argv) == 2 and sys.argv[1] in SOUNDS:
+        sys.exit(0 if play(sys.argv[1]) else 1)
+    else:
+        sys.exit('usage: mia3-chime ' + '|'.join(SOUNDS))

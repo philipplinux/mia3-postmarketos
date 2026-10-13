@@ -1,2 +1,0 @@
-# Speaker amp bus (MAX98937 at 0x3a, no other clients): the dashboard (audio group) sets volume over i2c-dev
-KERNEL=="i2c-1", GROUP="audio", MODE="0660"

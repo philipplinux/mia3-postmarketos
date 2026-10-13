@@ -8,7 +8,7 @@ Too hot -> hold (no charge current, and USB still carries the load); unreadable 
 /var/lib/chargectl/chargectl.json {"target": 20-100, "drain": bool} sets the level (100 = no limit) and whether a battery above it
 is run down to it (drain) or just left alone; edits apply within a few seconds.
 """
-import glob, json, os, sys, time
+import glob, json, os, subprocess, sys, time
 
 P = "/sys/module/pmi632_chg/parameters/"
 STATE = "/run/chargectl.mode"
@@ -17,6 +17,7 @@ CONF = "/var/lib/chargectl/chargectl.json"
 OCV = [(3.40, 0), (3.60, 10), (3.70, 25), (3.80, 45), (3.90, 60), (4.00, 72), (4.10, 85), (4.25, 95), (4.40, 100)]
 # tuning knobs (volts) around the target's rest voltage; voltage under charge reads ~0.05-0.1 V above rest
 STOP_ABOVE, RECHARGE_BELOW, FAILSAFE = 0.07, 0.08, 3.60
+LOW, LOW_REARM = 10, 20  # %: audio/mia3-chime "low" once below LOW, again only after back above LOW_REARM
 HOT, COOL = 45.0, 40.0  # °C: stop charging at HOT, allow it again below COOL
 TEMPS = ("chg_temp", "quiet_therm", "xo_therm")
 SWITCH = {"charge": ("1", "0"), "hold": ("0", "0"), "discharge": ("0", "1")}  # charging_enabled, usb_suspend
@@ -61,6 +62,13 @@ def _step(mode, v, target=50, drain=True):
     return mode
 
 
+def low_chime(armed, v):
+    """Returns (armed, chime now): fire once when the battery drops below LOW %."""
+    if armed and 0 < v < volts_for(LOW):
+        return False, True
+    return armed or v > volts_for(LOW_REARM), False
+
+
 def vbat():
     return int(open(glob.glob("/sys/bus/iio/devices/iio:device*/in_voltage_vbat_sns_input")[0]).read()) / 1e6
 
@@ -92,7 +100,7 @@ def conf_mtime():
 
 
 def main():
-    mode, hot = None, False
+    mode, hot, armed = None, False, True
     while True:
         seen = conf_mtime()
         target, drain = load_conf()
@@ -106,6 +114,13 @@ def main():
         except Exception as ex:  # can't see heat: don't push current into the battery
             print("temp read failed, holding:", ex, flush=True)
             t = HOT
+        armed, ring = low_chime(armed, v)
+        if ring:
+            print(f"{v:.3f} V: battery below {LOW}%", flush=True)
+            try:
+                subprocess.Popen(["mia3-chime", "low"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except OSError:
+                pass
         new, now_hot = step(mode or "hold", v, t, hot, target, drain)
         if v == 0.0 and not now_hot:
             new = "charge"
@@ -136,6 +151,9 @@ if __name__ == "__main__":
         assert _step("hold", 3.70, 100) == "charge" and _step("charge", 4.3, 100) == "charge"
         assert _step("hold", 3.95, 50, drain=False) == "hold" and _step("discharge", 3.95, 50, drain=False) == "hold"
         assert _step("hold", 4.00, 80) == "hold" and _step("hold", 3.97, 80) == "charge"   # 80% rests ~4.06 V
+        assert low_chime(True, 3.55) == (False, True) and low_chime(False, 3.55) == (False, False)
+        assert low_chime(False, 3.65) == (False, False) and low_chime(False, 3.75) == (True, False)
+        assert low_chime(True, 0.0) == (True, False)  # unreadable vbat never chimes
         print("ok")
     else:
         main()

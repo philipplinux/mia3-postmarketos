@@ -1,0 +1,5 @@
+# Dashboard (user philipp, groups audio + video) controls without root:
+# speaker amp bus (MAX98937 at 0x3a, no other clients) for volume/gain over i2c-dev
+KERNEL=="i2c-1", GROUP="audio", MODE="0660"
+# GPU devfreq governor + max clock (reset at reboot)
+SUBSYSTEM=="devfreq", KERNEL=="5900000.gpu", RUN+="/bin/sh -c 'chgrp video /sys%p/governor /sys%p/max_freq && chmod g+w /sys%p/governor /sys%p/max_freq'"
