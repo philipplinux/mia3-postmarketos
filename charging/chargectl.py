@@ -16,7 +16,10 @@ CONF = "/var/lib/chargectl/chargectl.json"
 # same rough OCV table as the dashboard's battery.py (V -> %)
 OCV = [(3.40, 0), (3.60, 10), (3.70, 25), (3.80, 45), (3.90, 60), (4.00, 72), (4.10, 85), (4.25, 95), (4.40, 100)]
 # tuning knobs (volts) around the target's rest voltage; voltage under charge reads ~0.05-0.1 V above rest
-STOP_ABOVE, RECHARGE_BELOW, FAILSAFE = 0.07, 0.08, 3.60
+STOP_ABOVE, RECHARGE_BELOW, FAILSAFE = 0.05, 0.08, 3.60
+# draining, the phone's load pulls vbat 0.1-0.2 V below rest (measured 2026-10-13: 3.83 V loaded -> 3.90 V at rest,
+# i.e. ~60 % instead of 50): keep draining to this much below the target so it rests near it
+DISCHARGE_SAG = 0.06
 LOW, LOW_REARM = 10, 20  # %: audio/mia3-chime "low" once below LOW, again only after back above LOW_REARM
 HOT, COOL = 45.0, 40.0  # °C: stop charging at HOT, allow it again below COOL
 TEMPS = ("chg_temp", "quiet_therm", "xo_therm")
@@ -51,7 +54,7 @@ def _step(mode, v, target=50, drain=True):
         return "charge"
     hold_at = volts_for(target)
     stop = hold_at + STOP_ABOVE
-    if mode == "discharge" and (v <= hold_at or not drain):
+    if mode == "discharge" and (v <= hold_at - DISCHARGE_SAG or not drain):
         return "hold"
     if mode == "charge" and v >= stop:
         return "hold"
@@ -139,7 +142,7 @@ def main():
 
 if __name__ == "__main__":
     if sys.argv[1:] == ["--selftest"]:
-        assert _step("discharge", 4.3) == "discharge" and _step("discharge", 3.82) == "hold"
+        assert _step("discharge", 4.3) == "discharge" and _step("discharge", 3.82) == "discharge" and _step("discharge", 3.77) == "hold"
         assert _step("hold", 3.80) == "hold" and _step("hold", 3.74) == "charge"
         assert _step("charge", 3.85) == "charge" and _step("charge", 3.91) == "hold"
         assert _step("discharge", 3.5) == "charge" and _step("hold", 3.95) == "discharge"

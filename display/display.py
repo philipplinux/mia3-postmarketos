@@ -19,6 +19,7 @@ import socket
 import re
 import struct
 import subprocess
+import tempfile
 import textwrap
 import threading
 import time
@@ -237,6 +238,9 @@ TG_LIMITS = (('batt_max', 'Battery max', ' °C', 1, 40, 65, 55), ('soc_max', 'CP
 TG_CARD = (30, 1350, 1050, 1590)
 LOCK_CHG, LOCK_TG = (810, 972, 1020, 1026), (790, 45, 1040, 125)   # charge limit card / Thermal guard page
 UNLOCK = [0.0]   # monotonic deadline: limits are editable until then, tap the lock pill to unlock for 60 s
+FREEZE_BTN = (30, 1850, 1050, 2000)    # Power page: reboot-on-freeze toggle (system/90-mia3-panic.conf)
+PANIC_CONF = '/etc/sysctl.d/90-mia3-panic.conf'
+PANIC_KEYS = ('softlockup_panic', 'hardlockup_panic', 'panic_on_rcu_stall')   # kernel.panic = 10 then reboots
 POWER_BTNS = (('reboot', (30, 1620, 520, 1820)), ('poweroff', (560, 1620, 1050, 1820)))
 LIST_TOP = 150
 LIST_BOTTOM = TAB_Y - 10
@@ -1397,6 +1401,12 @@ class Ui:
                     self.toast = (f'Could not save: {e.strerror}', now + 4)
             elif self.page == len(TABS) - 1 and hit(TG_CARD, x, y):
                 self.sub = {'kind': 'thermal'}
+            elif self.page == len(TABS) - 1 and hit(FREEZE_BTN, x, y):
+                try:
+                    set_freeze_reboot(not freeze_reboot())
+                    self.toast = ('Reboot on freeze ' + ('on' if freeze_reboot() else 'off'), now + 3)
+                except OSError as e:
+                    self.toast = (f'Could not save: {e.strerror}', now + 4)
             elif self.page == len(TABS) - 1 and hit(DRAIN_BTN, x, y):
                 try:
                     set_charge_conf(drain=not charge_conf()['drain'])
@@ -1919,6 +1929,22 @@ def charge_conf():
         return {'target': 50, 'drain': True}
 
 
+def freeze_reboot(kdir='/proc/sys/kernel'):
+    try:
+        return all(Path(kdir, k).read_text().strip() == '1' for k in PANIC_KEYS)
+    except OSError:
+        return None
+
+
+def set_freeze_reboot(on, kdir='/proc/sys/kernel', conf=PANIC_CONF):
+    v = int(bool(on))
+    for k in PANIC_KEYS:
+        Path(kdir, k).write_text(str(v))
+    Path(conf).write_text('# A hung kernel panics and reboots after 10 s instead of sitting frozen (headless server).\n'
+                          '# The panic trace lands in pstore: /sys/fs/pstore/ after the reboot. Toggle: display Power page.\n'
+                          + ''.join(f'kernel.{k} = {v}\n' for k in PANIC_KEYS) + 'kernel.panic = 10\n')
+
+
 def tg_conf():
     try:
         c = json.load(open(TG_CONF))
@@ -2039,6 +2065,13 @@ def page_battery(data, stale):
     for act, (x0, y0, x1, y1) in POWER_BTNS:
         card(x0, y0, x1 - x0, y1 - y0, outline=AMBER if act == 'poweroff' else CYAN)
         text((x0 + x1) // 2, (y0 + y1) // 2, CONFIRM_TEXT[act][0], 56, bold=True, anchor='mm')
+    x0, y0, x1, y1 = FREEZE_BTN
+    fr = freeze_reboot()
+    card(x0, y0, x1 - x0, y1 - y0)
+    text(60, y0 + 25, 'Reboot on freeze', 38)
+    text(60, y0 + 80, 'on a kernel lockup: panic, reboot after 10 s' if fr is not None else 'unavailable', 26, MUTED)
+    d.rounded_rectangle((880 * P, (y0 + 45) * P, 1010 * P, (y0 + 105) * P), 30 * P, fill=GREEN if fr else LINE)
+    d.ellipse(((950 if fr else 885) * P, (y0 + 50) * P, (1005 if fr else 940) * P, (y0 + 100) * P), fill=TEXT)
     return image
 
 
@@ -2154,6 +2187,13 @@ def api_action(act, arg):
 
 
 def selftest():
+    with tempfile.TemporaryDirectory() as tmp:                 # freeze toggle writes sysctls + persists
+        for k in PANIC_KEYS:
+            Path(tmp, k).write_text('1\n')
+        assert freeze_reboot(tmp) is True
+        set_freeze_reboot(False, tmp, f'{tmp}/c.conf')
+        assert freeze_reboot(tmp) is False and 'kernel.hardlockup_panic = 0' in Path(tmp, 'c.conf').read_text()
+        assert freeze_reboot(f'{tmp}/missing') is None
     t = Touch(719, 1559)
 
     def run(events, now0=0.0, step=0.01):
@@ -2342,7 +2382,6 @@ def selftest():
     ui.render(data, False, 0)
     assert ui.on_gesture(('tap', 500, 400), data, 0) == [] and ui.pair
     assert ui.on_gesture(('tap', 760, 1200), data, 0) == [('pair', True)] and ui.pair is None
-    import tempfile
     with tempfile.TemporaryDirectory() as tmp:
         os.mkdir(f'{tmp}/sub')
         Path(f'{tmp}/a.txt').write_text('hello\tworld\n' * 100)
@@ -2849,6 +2888,21 @@ def kmscon_on():
     return sh('systemctl', 'is-active', '--quiet', f'kmsconvt@tty{KMSCON_VT}')[0]
 
 
+class Keys:
+    """Virtual keyboard (uinput) for the terminal view: volume up/down -> F11/F12 (tmux scrollback, shell/tmux-console.conf)."""
+    def __init__(self):
+        self.fd = os.open('/dev/uinput', os.O_WRONLY | os.O_NONBLOCK)
+        fcntl.ioctl(self.fd, 0x40045564, 1)                # UI_SET_EVBIT EV_KEY
+        for k in (87, 88):                                 # KEY_F11, KEY_F12
+            fcntl.ioctl(self.fd, 0x40045565, k)            # UI_SET_KEYBIT
+        fcntl.ioctl(self.fd, 0x405c5503, struct.pack('4H80sI', 6, 0x1, 0x1, 1, b'mia3-display volume keys', 0))  # UI_DEV_SETUP
+        fcntl.ioctl(self.fd, 0x5501)                       # UI_DEV_CREATE
+
+    def tap(self, key):
+        ev = struct.Struct('@llHHi')
+        os.write(self.fd, b''.join(ev.pack(0, 0, *e) for e in ((1, key, 1), (0, 0, 0), (1, key, 0), (0, 0, 0))))
+
+
 def fetch():
     with urllib.request.urlopen('http://127.0.0.1:8090/api/status',timeout=4) as response:
         return json.load(response)
@@ -2897,6 +2951,11 @@ def main():
         logging.info('Exclusive power-key input acquired')
     vol_fds = [os.open('/dev/input/' + p.name, os.O_RDONLY | os.O_NONBLOCK) for p in Path('/sys/class/input').glob('event*')
                if (p / 'device/name').read_text().strip() in ('pm8941_resin', 'gpio-keys')]   # volume down / up
+    try:
+        keys = Keys()
+    except OSError:
+        keys = None
+        logging.exception('uinput unavailable; no volume-key scrolling in the terminal')
     touch_fd = touch = None
     for p in Path('/sys/class/input').glob('event*'):
         if (p/'device/name').read_text().strip() == args.touch_name:
@@ -2996,7 +3055,9 @@ def main():
                     raw = os.read(fd, event.size * 32)
                     for offset in range(0, len(raw) - event.size + 1, event.size):
                         _, _, kind, code, value = event.unpack_from(raw, offset)
-                        if kind == 1 and code in (114, 115) and value and display.shown and action is None:
+                        if kind == 1 and code in (114, 115) and value and display.view == 'terminal' and keys:
+                            keys.tap(87 if code == 115 else 88)                  # volume up -> F11 (scroll up)
+                        elif kind == 1 and code in (114, 115) and value and display.shown and action is None:
                             for g in (('scrollstart',), ('scroll', VOL_STEP if code == 115 else -VOL_STEP)):
                                 ui.on_gesture(g, latest, time.monotonic())   # same path as a finger drag
                             ui_dirty = True

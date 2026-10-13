@@ -6,7 +6,7 @@ Tested on kernel `linux-nura-qcom-sm61x5` 7.2.3, booting slot b. No warranty: ba
 | Folder | What |
 |---|---|
 | `dts/` | Device-tree with cpufreq-hw, Bluetooth (WCN3988 on GENI UART) and the IR blaster. `CPUFREQ.md` has the cpufreq-only write-up |
-| `display/` | Framebuffer + touch UI (root service), icon tab bar: Overview, Containers, Processes, Network page (Wi-Fi details, static IP/DNS, picker, saved networks/forget, SSH, Tailscale, USB modes, Bluetooth with pairing popup, IR remote with d-pad/Home/Back), Files (browse/preview; new folder and delete only under `/home/philipp` and `/mnt/sd`), Power |
+| `display/` | Framebuffer + touch UI (root service), icon tab bar: Overview, Containers, Processes, Network page (Wi-Fi details, static IP/DNS, picker, saved networks/forget, SSH, Tailscale, USB modes, Bluetooth with pairing popup, IR remote with d-pad/Home/Back), Files (browse/preview; new folder and delete only under `/home/philipp` and `/mnt/sd`), Power (incl. Reboot-on-freeze toggle: `system/90-mia3-panic.conf` sysctls) |
 | `bluetooth/` | `bt-agent.service`: headless auto-accept agent (only without the display; the display has its own pairing popup) |
 | `dashboard/` | Web dashboard (user service on port 8090, reachable per interface: see "Web dashboard"): CPU per core/GPU/battery + charge limit/thermals/services/processes/SD, Audio & GPU card (speaker volume/gain, test tone, GPU governor/max clock) |
 | `charging/` | `pmi632_chg` kernel module (charge on/off, USB suspend) + `chargectl.py` that holds the battery at a set level (default 50 %, `/var/lib/chargectl/chargectl.json` owned by the dashboard user, adjustable on the Power page and the web dashboard) |
@@ -139,6 +139,10 @@ Optional **kmscon** on tty2 (Nerd Font prompt): `apk add kmscon kmscon-systemd`,
 `/etc/systemd/system/kmsconvt@tty2.service.d/mia3.conf`, `systemctl enable --now kmsconvt@tty2` (it takes over `autovt@tty2`).
 The power key then adds it after tty1. kmscon 10 is DRM-only: the strip and touch keyboard can't show over it (tapping the
 top edge still switches), so it is off by default.
+
+Scrollback: fbcon has none, so `.bash_profile` runs tty1–4 inside tmux (`apk add tmux`, `shell/tmux-console.conf` →
+`~/.config/tmux/console.conf`, no status bar). In the terminal view the display turns volume up/down into F11/F12 (uinput
+"mia3-display volume keys"): half a page up/down, scrolling past the bottom leaves copy mode.
 
 Copy `shell/.bashrc` and `shell/.bash_profile` to `~`, `shell/bashrc.d/` to `~/.bashrc.d/`, `shell/starship.toml` to `~/.config/`.
 Install: `apk add bash starship fzf fd font-jetbrains-mono-nerd`, ble.sh from https://github.com/akinomyoga/ble.sh
