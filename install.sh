@@ -42,8 +42,6 @@ run sudo apk add python3 py3-pillow font-opensans font-droid networkmanager-cli 
 [ "$SHELLSETUP" = 0 ] || run sudo apk add bash starship fzf fd font-jetbrains-mono-nerd sway foot wvkbd grim
 
 say "display"
-run sudo install -m644 "$R/system/90-mia3-console.conf" /etc/sysctl.d/   # the panic conf is the Power page toggle's
-run sudo sysctl -q -p /etc/sysctl.d/90-mia3-console.conf
 run sudo install -D -m755 "$R/display/display.py" /usr/local/lib/mia3-display/display.py
 run sudo install -D -m644 "$R/display/mia3-display.service" /etc/systemd/system/mia3-display.service
 if [ -f "$R/display/54_mia3_dashboard.nft" ]; then

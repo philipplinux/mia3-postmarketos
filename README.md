@@ -193,7 +193,7 @@ on tty1, swipe down from the top for its tab strip:
 
 | Tab | What |
 |---|---|
-| tty1 | the stock fbcon console on VT 1 (kernel errors only: `system/90-mia3-console.conf`; buffyboard keyboard); swipe down from the top for its tab strip |
+| tty1 | the stock fbcon console on VT 1 (raw kernel messages, buffyboard keyboard); swipe down from the top for its tab strip |
 | tty2, tty3, tty4 | foot shells in sway |
 
 `install.sh` sets it up: `sway/config`, `ttybar.py`, `respawn.sh` → `~/.config/sway/`, `sway/foot.ini` → `~/.config/foot/`,
