@@ -39,7 +39,7 @@ run sudo apk add python3 py3-pillow font-opensans font-droid networkmanager-cli 
     bluez-tools v4l-utils iputils py3-dbus-fast font-nerd-fonts-symbols \
     openssh-client nftables
 [ "$KMOD" = 0 ] || run sudo apk add clang lld llvm make kmod
-[ "$SHELLSETUP" = 0 ] || run sudo apk add bash starship fzf fd font-jetbrains-mono-nerd
+[ "$SHELLSETUP" = 0 ] || run sudo apk add bash starship fzf fd font-jetbrains-mono-nerd kmscon kmscon-systemd
 
 say "display"
 run sudo install -D -m755 "$R/display/display.py" /usr/local/lib/mia3-display/display.py
@@ -56,6 +56,11 @@ if [ -f "$R/display/54_mia3_dashboard.nft" ]; then
 fi
 run sudo systemctl daemon-reload
 run sudo systemctl enable --now mia3-display.service
+if [ "$SHELLSETUP" = 1 ]; then   # GPU terminal on tty2, third power-key view
+    run sudo install -D -m644 "$R/display/kmsconvt@tty2.conf" /etc/systemd/system/kmsconvt@tty2.service.d/mia3.conf
+    run sudo systemctl daemon-reload
+    run sudo systemctl enable --now kmsconvt@tty2.service
+fi
 
 say "dashboard"
 run sudo install -d -o "$ME" -g "$ME" /var/lib/mia3-dashboard /var/lib/chargectl
@@ -115,7 +120,7 @@ echo "- Firmware: README 'Kernel and pmaports' (firmware/extract-firmware.sh, as
 echo "- Kernel/dtb: README 'Boot image with the dtb' (flash from a PC with fastboot)"
 
 say "service states"
-for u in mia3-display chargectl thermal-guard nftables; do
+for u in mia3-display chargectl thermal-guard nftables kmsconvt@tty2; do
     printf '%-16s %s\n' "$u" "$(systemctl is-active "$u" 2>&1 || true)"
 done
 printf '%-16s %s\n' mia3-dashboard "$(systemctl --user is-active mia3-dashboard 2>&1 || true)"

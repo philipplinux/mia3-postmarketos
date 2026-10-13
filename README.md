@@ -124,6 +124,11 @@ Binds `0.0.0.0:8090` but answers only on the interfaces switched on in the phone
 
 ## Shell
 
+Power key cycles: dashboard → tty1 console (fbcon, plain prompt, buffyboard touch keyboard) → **kmscon** on tty2
+(GPU-rendered, Nerd Font prompt, needs a USB/Bluetooth keyboard: buffyboard can't draw over it) → blank.
+kmscon: `apk add kmscon kmscon-systemd`, `display/kmsconvt@tty2.conf` → `/etc/systemd/system/kmsconvt@tty2.service.d/mia3.conf`,
+`systemctl enable --now kmsconvt@tty2`. The display drops DRM master at start so kmscon can take it.
+
 Copy `shell/.bashrc` and `shell/.bash_profile` to `~`, `shell/bashrc.d/` to `~/.bashrc.d/`, `shell/starship.toml` to `~/.config/`.
 Install: `apk add bash starship fzf fd font-jetbrains-mono-nerd`, ble.sh from https://github.com/akinomyoga/ble.sh
 into `~/.local/share/blesh`, and `starship preset plain-text-symbols -o ~/.config/starship-plain.toml` for the console.

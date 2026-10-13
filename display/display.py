@@ -239,6 +239,7 @@ POWER_BTNS = (('reboot', (30, 1620, 520, 1820)), ('poweroff', (560, 1620, 1050, 
 LIST_TOP = 150
 LIST_BOTTOM = TAB_Y - 10
 DRAG_PX = 40
+KMSCON_VT = 2        # power key: dashboard -> tty1 console + touch keyboard -> kmscon (if running) -> blank
 VOL_STEP = 600        # volume keys scroll lists by this many px
 SWIPE_PX = 250
 LONG_S = 0.8
@@ -2557,6 +2558,7 @@ class Display:
         self.drm.drmModeGetProperty.restype = ctypes.POINTER(DRMProperty)
         self.drm.drmModeConnectorSetProperty.argtypes = [ctypes.c_int,ctypes.c_uint32,ctypes.c_uint32,ctypes.c_uint64]
         self.connector, self.dpms_property, self.initial_dpms = self.find_dpms()
+        self.drm.drmDropMaster(self.drm_fd)   # first opener is master; kmscon on tty1 needs it while shown
         self.shown = False
         self.touched = False
         self.view = 'terminal'
@@ -2669,12 +2671,23 @@ class Display:
     def activate_graphics(self):
         # Preserve the readable panel initialized at boot. A recovery DPMS
         # cycle here can turn a working console into an unwakeable panel.
-        if not self.touched or self.view == 'terminal':
+        if not self.touched or self.view in ('terminal', 'kmscon'):
             self.touched = True
             fcntl.ioctl(self.tty,0x4B3A,0)  # KD_TEXT while switching VTs
             fcntl.ioctl(self.tty,0x5606,8)
             fcntl.ioctl(self.tty,0x5607,8)
             fcntl.ioctl(self.tty,0x4B3A,1)  # KD_GRAPHICS after activation
+            self.restore_fbdev()
+
+    def restore_fbdev(self):
+        # kmscon leaves its own buffer on the CRTC; a forced set_par puts the fbdev one back.
+        var = bytearray(160)
+        try:
+            fcntl.ioctl(self.fd,0x4600,var)                       # FBIOGET_VSCREENINFO
+            struct.pack_into('I',var,84,struct.unpack_from('I',var,84)[0] | 128)   # activate |= FB_ACTIVATE_FORCE
+            fcntl.ioctl(self.fd,0x4601,var)                       # FBIOPUT_VSCREENINFO
+        except OSError:
+            logging.exception('fbdev restore failed')
 
     def show(self,image):
         self.keyboard(False)
@@ -2695,6 +2708,12 @@ class Display:
         self.view = 'terminal'
         self.keyboard(True)
 
+    def kmscon(self):
+        # GPU terminal on tty2 (kmsconvt@tty2): takes DRM master while shown, no touch keyboard there.
+        self.keyboard(False)
+        fcntl.ioctl(self.tty,0x5606,KMSCON_VT)  # VT_ACTIVATE; no wait, a dead kmscon must not hang the loop
+        self.view = 'kmscon'
+
     def hide(self):
         # Black pixels on the AMOLED panel, without its unreliable power cycle.
         self.keyboard(False)
@@ -2708,6 +2727,8 @@ class Display:
             self.show(image)
         elif self.view == 'dashboard':
             self.terminal()
+        elif self.view == 'terminal' and sh('systemctl', 'is-active', '--quiet', f'kmsconvt@tty{KMSCON_VT}')[0]:
+            self.kmscon()
         else:
             self.hide()
         logging.info('Display view: %s',self.view)
