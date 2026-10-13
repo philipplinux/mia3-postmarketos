@@ -1,0 +1,14 @@
+[Unit]
+Description=Mi A3 speaker (ADSP, sound card, MAX98937 amp init)
+# both load mia3_dtbo; bringup.sh unloads it between overlays
+After=local-fs.target mia3-tsens.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=P=/usr/local/lib/mia3-audio
+ExecStart=/bin/sh /usr/local/lib/mia3-audio/bringup.sh
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

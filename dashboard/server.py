@@ -150,6 +150,7 @@ def access_info(wifi: dict[str, Any], port: int) -> dict[str, Any]:
     urls = {"wifi": ip and f"http://{ip}:{port}", "usb": f"http://172.16.42.1:{port}",
             "tailscale": f"http://{socket.gethostname()}:{port}"}
     return {k: {"on": conf[k], "url": urls[k]} for k in conf}
+from audio import audio_info, play_tone, set_volume
 from gpu import gpu_info
 from services import services_info
 
@@ -448,6 +449,7 @@ class Collector:
                 "battery": {**battery_info(self.sys_root), "charge": charge_conf()},
                 "gpu": {**gpu_info(self.sys_root), "temp_c": zone_max(self.sys_root, ("gpu-",))},
                 "thermal": thermal_info(),
+                "audio": audio_info(),
                 "services": services_info(self.run),
                 "uptime_seconds": uptime_seconds(self.proc_root),
                 "cpu": {"percent": cpu_percent, "logical_cores": self.cpu_count,
@@ -560,6 +562,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             ok, msg = self.collector.kill(body.get("pid"), body.get("start"), body.get("signal"))
         elif self.path == "/api/charge":
             ok, msg = set_charge_conf(body.get("target"), body.get("drain"))
+        elif self.path == "/api/audio/volume":
+            ok, msg = set_volume(body.get("volume"))
+        elif self.path == "/api/audio/tone":
+            ok, msg = play_tone()
         elif self.path.startswith("/api/docker/"):
             ok, msg = self.collector.docker_action(self.path[len("/api/docker/"):], body.get("name"))
         else:

@@ -1,2 +1,12 @@
 __pycache__/
 *.bak*
+# kernel module builds (audio/, charging/, thermal-sensors/)
+*.ko
+*.o
+*.mod
+*.mod.c
+.*.cmd
+Module.symvers
+modules.order
+*.dtbo
+audio/spdif_transmitter.c

@@ -2,7 +2,7 @@
 /* Applies /lib/firmware/<dtbo> as a device-tree overlay. Unloading keeps the overlay: reboot to undo.
  * ph=<path>=<phandle>,... gives existing nodes a phandle first (overlays can't add one).
  * force=1 overwrites a phandle this loader set earlier (never one from the base dtb).
- * pdev=<path> creates a platform device for a new root-level node (the bus notifier skips those). */
+ * pdev=<path>,... creates platform devices for new root-level nodes (the bus notifier skips those). */
 #include <linux/firmware.h>
 #include <linux/module.h>
 #include <linux/of.h>
@@ -10,12 +10,13 @@
 static char *dtbo = "mia3-apr.dtbo";
 static char *ph[8];
 static int nph;
-static char *pdev;
+static char *pdev[4];
+static int npdev;
 static bool force;
 module_param(force, bool, 0444);
 module_param(dtbo, charp, 0444);
 module_param_array(ph, charp, &nph, 0444);
-module_param(pdev, charp, 0444);
+module_param_array(pdev, charp, &npdev, 0444);
 static int __init mia3_dtbo_init(void)
 {
 	const struct firmware *fw;
@@ -44,12 +45,14 @@ static int __init mia3_dtbo_init(void)
 	ret = of_overlay_fdt_apply(fw->data, fw->size, &id, NULL);
 	release_firmware(fw);
 	pr_info("mia3_dtbo: %s -> %d (ovcs %d)\n", dtbo, ret, id);
-	if (ret || !pdev)
+	if (ret)
 		return ret;
-	np = of_find_node_by_path(pdev);
-	if (np && !of_find_device_by_node(np))
-		of_platform_device_create(np, NULL, NULL);
-	of_node_put(np);
+	for (i = 0; i < npdev; i++) {
+		np = of_find_node_by_path(pdev[i]);
+		if (np && !of_find_device_by_node(np))
+			of_platform_device_create(np, NULL, NULL);
+		of_node_put(np);
+	}
 	return 0;
 }
 static void __exit mia3_dtbo_exit(void) {}
