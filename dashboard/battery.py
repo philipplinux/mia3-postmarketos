@@ -1,4 +1,5 @@
 """Battery estimate from PMIC IIO ADCs (no fuel gauge driver on the Mi A3)."""
+import json
 from pathlib import Path
 
 # Li-ion open-circuit voltage (V) -> percent; rough, and reads high while charging.
@@ -42,13 +43,22 @@ def iio_battery(sys_root):
             "voltage_v": round(vbat / 1000, 3), "current_ma": None, "present": True}
 
 
-MODES = {"charge": "Charging (limit ~50%)", "hold": "USB power, battery idle (~50%)",
-         "discharge": "On battery, draining to ~50%"}
+MODES = {"charge": "Charging to ~{}%", "hold": "USB power, holding ~{}%", "discharge": "On battery, draining to ~{}%"}
+
+
+def charge_target():
+    try:
+        return max(20, min(100, int(json.load(open("/etc/chargectl.json")).get("target", 50))))
+    except (OSError, ValueError, TypeError, AttributeError):
+        return 50
 
 
 def status(plugged):
     try:  # chargectl overrides what the USB voltage suggests
-        return MODES[open("/run/chargectl.mode").read().strip()] if plugged else "On battery (est.)"
+        mode, t = open("/run/chargectl.mode").read().strip(), charge_target()
+        if plugged and mode == "charge" and t >= 100:
+            return "Charging (no limit)"
+        return MODES[mode].format(t) if plugged else "On battery (est.)"
     except (OSError, KeyError):
         return "USB power / charging (est.)" if plugged else "On battery (est.)"
 

@@ -9,7 +9,7 @@ Tested on kernel `linux-nura-qcom-sm61x5` 7.2.3, booting slot b. No warranty: ba
 | `display/` | Framebuffer + touch UI (root service), icon tab bar: Overview, Containers, Processes, Network page (Wi-Fi details, static IP/DNS, picker, saved networks/forget, SSH, Tailscale, USB modes, Bluetooth with pairing popup, IR remote with d-pad/Home/Back), Files (browse/preview; new folder and delete only under `/home/philipp` and `/mnt/sd`), Power |
 | `bluetooth/` | `bt-agent.service`: headless auto-accept agent (only without the display; the display has its own pairing popup) |
 | `dashboard/` | Web dashboard (user service, port 8090): CPU/GPU/battery/thermals/services/processes |
-| `charging/` | `pmi632_chg` kernel module (charge on/off, USB suspend) + `chargectl.py` that holds the battery near 50 % |
+| `charging/` | `pmi632_chg` kernel module (charge on/off, USB suspend) + `chargectl.py` that holds the battery at a set level (default 50 %, `/etc/chargectl.json`, adjustable on the Power page) |
 | `thermal-guard/` | Powers the phone off on sustained overheating |
 | `shell/` | bash + starship + ble.sh + fzf setup (plain-text prompt on the framebuffer console) |
 

@@ -110,7 +110,7 @@ def batt_head(d, text, x, y, size, b):
     return col
 
 
-def render(data, stale=False):
+def render(data, stale=False, cores=False):
     """Overview: battery, 2x2 gauges, connectivity, then container/process summaries (tap a card for its tab)."""
     image = Image.new('RGB', IMG, BG)
     d, text, card, bar = tools(image)
@@ -124,14 +124,17 @@ def render(data, stale=False):
     b, th = data.get('battery') or {}, data.get('thermal') or {}
     x0, y0, x1, y1 = OV_BATT
     card(x0, y0, x1 - x0, y1 - y0)
-    col = batt_head(d, text, 60, 175, 130, b)
-    text(60, 350, b.get('status') or 'No battery gauge', 36, MUTED, max_width=560)
-    bar(60, 420, 560, b.get('percent'), h=24, color=col)
-    temp = th.get('temp_c') if th.get('temp_c') is not None else b.get('temperature_c')
-    for i, (label, value) in enumerate((('Uptime', uptime_text(data.get('uptime_seconds'))),
-                                        ('Temperature', fmt(temp, 1, ' °C')))):
-        text(700, 195 + i * 150, label, 30, MUTED)
-        text(700, 235 + i * 150, value, 52, AMBER if label == 'Temperature' and th.get('over') else TEXT, bold=True)
+    if cores:   # CPU tile tapped: per-core view takes the big card, battery moves into the tile
+        draw_cores(d, text, bar, data)
+    else:
+        col = batt_head(d, text, 60, 175, 130, b)
+        text(60, 350, b.get('status') or 'No battery gauge', 36, MUTED, max_width=560)
+        bar(60, 420, 560, b.get('percent'), h=24, color=col)
+        temp = th.get('temp_c') if th.get('temp_c') is not None else b.get('temperature_c')
+        for i, (label, value) in enumerate((('Uptime', uptime_text(data.get('uptime_seconds'))),
+                                            ('Temperature', fmt(temp, 1, ' °C')))):
+            text(700, 195 + i * 150, label, 30, MUTED)
+            text(700, 235 + i * 150, value, 52, AMBER if label == 'Temperature' and th.get('over') else TEXT, bold=True)
 
     cpu, mem, st, gpu = (data.get(k) or {} for k in ('cpu', 'memory', 'storage', 'gpu'))
     load = gpu.get('utilization_percent')
@@ -144,6 +147,12 @@ def render(data, stale=False):
     for i, (label, value, sub, pct) in enumerate(tiles):
         x, y = 30 + i % 2 * 525, 530 + i // 2 * 330
         card(x, y, 495, 300)
+        if cores and i == 0:
+            text(x + 30, y + 25, 'Battery', 34, MUTED)
+            col = batt_head(d, text, x + 30, y + 70, 72, b)
+            bar(x + 30, y + 190, 435, b.get('percent'), color=col)
+            text(x + 30, y + 230, b.get('status') or 'No battery gauge', 30, MUTED, max_width=435)
+            continue
         text(x + 30, y + 25, label, 34, MUTED, max_width=435)
         text(x + 30, y + 70, value, 72, bold=True, max_width=435)
         bar(x + 30, y + 190, 435, pct)
@@ -220,6 +229,8 @@ CONFIRM_TEXT = {'restart': ('Restart', 'The container will be restarted'), 'paus
                 'delete': ('Delete', 'The file is gone for good'),
                 'delete_dir': ('Delete', 'The folder and everything in it'),
                 'reboot': ('Reboot', 'The phone restarts'), 'poweroff': ('Shut down', 'Turn it back on with the power button')}
+CHG_CONF = '/etc/chargectl.json'    # read by chargectl.service: {"target": 20-100, "drain": bool}
+LIM_MINUS, LIM_PLUS, DRAIN_BTN = (60, 1040, 260, 1160), (820, 1040, 1020, 1160), (60, 1200, 1020, 1300)
 POWER_BTNS = (('reboot', (30, 1620, 520, 1820)), ('poweroff', (560, 1620, 1050, 1820)))
 LIST_TOP = 150
 LIST_BOTTOM = TAB_Y - 10
@@ -828,34 +839,26 @@ def core_stats():
     return out
 
 
-def page_cores(w, data):
-    image = Image.new('RGB', IMG, BG)
-    d, text, card, bar = tools(image)
-    back_btn(text, card)
-    text(290, 48, 'CPU cores', 56, bold=True)
-    cpu = data.get('cpu') or {}
-    text(1040, 62, f"total {fmt(cpu.get('percent'), 0, '%')}", 40, MUTED, anchor='ra')
+def draw_cores(d, text, bar, data):
+    """Per-core busy % and clock in the Overview's big card: Little cluster left, Big right."""
+    text(60, 180, f"CPU cores · total {fmt((data.get('cpu') or {}).get('percent'), 0, '%')} · MHz", 34, MUTED)
     groups = {}
     for c in core_stats():
         groups.setdefault(c[3], []).append(c)
     names = ('Little', 'Big') if len(groups) == 2 else tuple(os.path.basename(k) for k in groups)
-    y = 190
-    for name, (pol, cores) in zip(names, groups.items()):
+    for col, (name, (pol, cs)) in enumerate(zip(names, list(groups.items())[:2])):
+        x = 60 + col * 495
         try:
-            top = f" · max {int(Path(pol, 'cpuinfo_max_freq').read_text()) / 1e6:.2f} GHz"
+            top = f" · max {int(Path(pol, 'cpuinfo_max_freq').read_text()) / 1e6:.1f} GHz"
         except (OSError, ValueError):
             top = ''
-        text(40, y, f"{name} · cpu{cores[0][0]}–{cores[-1][0]}{top}", 34, MUTED)
-        y += 70
-        card(30, y, 1020, len(cores) * 110 + 20)
-        for n, pct, mhz, _ in cores:
-            text(60, y + 30, f'cpu{n}', 38, bold=True)
-            bar(220, y + 48, 470, pct, 20, AMBER if (pct or 0) >= 80 else CYAN)
-            text(850, y + 30, fmt(pct, 0, '%'), 38, anchor='ra')
-            text(1020, y + 34, f'{mhz} MHz' if mhz else '—', 32, MUTED, anchor='ra')
-            y += 110
-        y += 70
-    return image
+        text(x, 235, name + top, 28, MUTED)
+        for i, (n, pct, mhz, _) in enumerate(cs[:4]):
+            y = 285 + i * 52
+            text(x, y, f'cpu{n}', 30, bold=True)
+            bar(x + 100, y + 16, 180, pct, 14, AMBER if (pct or 0) >= 80 else CYAN)
+            text(x + 370, y, fmt(pct, 0, '%'), 30, anchor='ra')
+            text(x + 465, y + 3, mhz or '—', 26, MUTED, anchor='ra')
 
 
 def page_usb(w, data):
@@ -1190,6 +1193,7 @@ class Ui:
         self.termed = {}       # (pid, start) -> time SIGTERM was accepted
         self.toast = ('', 0.0)
         self.wifi = None       # picker: {'nets', 'sel', 'pw', 'mode', 'show'}
+        self.ov_cores = False  # Overview: per-core CPU in the big card instead of the battery
         self.sub = None        # Network sub-page: {'kind': 'ssh' | 'usb' | 'bt', ...}
         self.pair = None       # Bluetooth agent request: {'name', 'kind', 'code'}
         self.files = {'kind': 'files', 'path': '/', 'ents': [], 'scroll': 0, 'view': None}   # Files tab state
@@ -1288,8 +1292,8 @@ class Ui:
                 return [('detail', self.detail)]
             elif hitrow:
                 self.pdetail = (hitrow['pid'], hitrow['start'])
-            elif self.page == 0 and hit(OV_CPU, x, y):
-                self.sub = {'kind': 'cores'}
+            elif self.page == 0 and (hit(OV_CPU, x, y) or self.ov_cores and hit(OV_BATT, x, y)):
+                self.ov_cores = not self.ov_cores
             elif self.page == 0:
                 for box, page in ((OV_BATT, len(TABS) - 1), (OV_NET, 3), (OV_CONT, 1), (OV_PROC, 2)):
                     if hit(box, x, y):
@@ -1315,6 +1319,17 @@ class Ui:
             elif self.page == 3 and hit(WIFI_CARD, x, y):
                 self.sub = {'kind': 'wifi', 'info': None}
                 return [('wifi', wifi_info)]
+            elif self.page == len(TABS) - 1 and (hit(LIM_MINUS, x, y) or hit(LIM_PLUS, x, y)):
+                t = charge_conf()['target'] + (5 if hit(LIM_PLUS, x, y) else -5)
+                try:
+                    set_charge_conf(target=max(20, min(100, t)))
+                except OSError as e:
+                    self.toast = (f'Could not save: {e.strerror}', now + 4)
+            elif self.page == len(TABS) - 1 and hit(DRAIN_BTN, x, y):
+                try:
+                    set_charge_conf(drain=not charge_conf()['drain'])
+                except OSError as e:
+                    self.toast = (f'Could not save: {e.strerror}', now + 4)
             elif self.page == len(TABS) - 1:
                 for act, box in POWER_BTNS:
                     if hit(box, x, y):
@@ -1585,14 +1600,13 @@ class Ui:
             image = page_wifi(self.wifi)
         elif self.sub is not None:
             image = {'ssh': page_ssh, 'usb': page_usb, 'bt': page_bt, 'wifi': page_wifiinfo, 'ipcfg': page_ipcfg,
-                     'ir': page_ir, 'saved': page_saved, 'files': page_files,
-                     'cores': page_cores}[self.sub['kind']](self.sub, data)
+                     'ir': page_ir, 'saved': page_saved, 'files': page_files}[self.sub['kind']](self.sub, data)
         elif self.detail:
             image = page_detail(self.detail, self.info, data)
         elif self.pdetail:
             image = page_proc_detail(self, data, now)
         elif self.page == 0:
-            image = render(data, stale)
+            image = render(data, stale, self.ov_cores)
         elif self.page == FILES_PAGE:
             image = page_files(self.files, data)
         else:
@@ -1805,35 +1819,64 @@ def page_network(data, stale):
     return image
 
 
+def charge_conf():
+    try:
+        c = json.load(open(CHG_CONF))
+        return {'target': max(20, min(100, int(c.get('target', 50)))), 'drain': bool(c.get('drain', True))}
+    except (OSError, ValueError, TypeError, AttributeError):
+        return {'target': 50, 'drain': True}
+
+
+def set_charge_conf(**kw):
+    c = {**charge_conf(), **kw}
+    tmp = CHG_CONF + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(c, f)
+    os.replace(tmp, CHG_CONF)
+
+
 def page_battery(data, stale):
     image = Image.new('RGB', IMG, BG)
     d, text, card, bar = tools(image)
     header(image, 'Battery & power', stale)
     b = data.get('battery') or {}
-    card(30, 170, 1020, 520)
-    col = batt_head(d, text, 60, 200, 150, b)
-    text(60, 400, b.get('status') or 'No battery gauge', 40, MUTED, max_width=960)
-    bar(60, 480, 960, b.get('percent'), h=28, color=col)
-    text(60, 560, 'Estimated from battery voltage' if b.get('name') else '', 30, MUTED)
+    card(30, 170, 1020, 420)
+    col = batt_head(d, text, 60, 190, 140, b)
+    text(60, 380, b.get('status') or 'No battery gauge', 38, MUTED, max_width=960)
+    bar(60, 450, 960, b.get('percent'), h=28, color=col)
+    text(60, 510, 'Estimated from battery voltage' if b.get('name') else '', 30, MUTED)
     up = data.get('uptime_seconds')
     for i, (label, value) in enumerate((
             ('Voltage', fmt(b.get('voltage_v'), 3, ' V')),
             ('Temperature', fmt(b.get('temperature_c'), 1, ' °C')),
             ('Current', fmt(b.get('current_ma'), 0, ' mA')),
-            ('Uptime', '—' if up is None else f'{int(up) // 86400}d {int(up) % 86400 // 3600}h {int(up) % 3600 // 60}m'))):
-        y = 730 + i * 150
-        card(30, y, 1020, 130)
-        text(60, y + 38, label, 40, MUTED)
-        text(1020, y + 30, value, 52, bold=True, anchor='ra')
+            ('Uptime', uptime_text(up)))):
+        x, y = 30 + i % 2 * 525, 620 + i // 2 * 165
+        card(x, y, 495, 145)
+        text(x + 30, y + 20, label, 30, MUTED)
+        text(x + 30, y + 62, value, 48, bold=True, max_width=435)
+    c = charge_conf()
+    card(30, 960, 1020, 360)
+    text(60, 980, 'Charge limit', 34, MUTED)
+    for box, label in ((LIM_MINUS, '−'), (LIM_PLUS, '+')):
+        card(box[0], box[1], box[2] - box[0], box[3] - box[1], fill=BG, outline=CYAN)
+        text((box[0] + box[2]) // 2, (box[1] + box[3]) // 2, label, 72, CYAN, bold=True, anchor='mm')
+    text(540, 1100, 'No limit' if c['target'] >= 100 else f"{c['target']}%", 80, bold=True, anchor='mm')
+    on = c['drain'] and c['target'] < 100
+    text(60, 1215, 'Drain down to the limit', 38, TEXT if c['target'] < 100 else MUTED)
+    text(60, 1262, 'on: runs on battery when above it' if c['drain'] else 'off: above the limit it just stops charging',
+         26, MUTED)
+    d.rounded_rectangle((880 * P, 1225 * P, 1010 * P, 1285 * P), 30 * P, fill=GREEN if on else LINE)
+    d.ellipse(((950 if on else 885) * P, 1230 * P, (1005 if on else 940) * P, 1280 * P), fill=TEXT)
     th = data.get('thermal') or {}
     if th.get('sensor'):
         hot = th.get('over', 0) > 0
-        card(30, 1330, 1020, 220, outline=AMBER if hot else None)
-        text(60, 1358, 'Thermal guard', 40, MUTED)
-        text(1020, 1350, f"{th['sensor'].replace('iio:', '')} {th['temp_c']:.1f} °C", 48, AMBER if hot else TEXT, bold=True, anchor='ra', max_width=700)
-        text(60, 1440, th.get('last_event') or 'no thermal events', 30, AMBER if hot else MUTED, max_width=960)
+        card(30, 1350, 1020, 240, outline=AMBER if hot else None)
+        text(60, 1375, 'Thermal guard', 36, MUTED)
+        text(1020, 1368, f"{th['sensor'].replace('iio:', '')} {th['temp_c']:.1f} °C", 44, AMBER if hot else TEXT, bold=True, anchor='ra', max_width=650)
+        text(60, 1450, th.get('last_event') or 'no thermal events', 30, AMBER if hot else MUTED, max_width=960)
         if th.get('charge_mode'):
-            text(60, 1495, f"charge: {th['charge_mode']}", 30, MUTED)
+            text(60, 1510, f"charger: {th['charge_mode']}", 30, MUTED)
     for act, (x0, y0, x1, y1) in POWER_BTNS:
         card(x0, y0, x1 - x0, y1 - y0, outline=AMBER if act == 'poweroff' else CYAN)
         text((x0 + x1) // 2, (y0 + y1) // 2, CONFIRM_TEXT[act][0], 56, bold=True, anchor='mm')
@@ -2211,12 +2254,22 @@ def selftest():
     assert cs and all(p is None or 0 <= p <= 100 for _, p, _, _ in cs)
     ui = Ui()
     ui.on_gesture(('tap', 200, 700), data, 0)
-    assert ui.sub == {'kind': 'cores'}
+    assert ui.ov_cores and ui.page == 0
     ui.render(data, False, 0)
-    ui.on_gesture(('tap', 100, 80), data, 0)
-    assert ui.sub is None
+    ui.on_gesture(('tap', 500, 300), data, 0)                 # big card swaps back instead of opening Power
+    assert not ui.ov_cores and ui.page == 0
     assert batt_color({'percent': 74}) == GREEN and batt_color({'percent': 10}) != AMBER
     assert batt_color({'percent': 30, 'status': 'Charging'}) == CYAN and batt_color({'percent': 30, 'status': 'Not charging'}) == AMBER
+    globals()['CHG_CONF'] = tempfile.mkdtemp() + '/chg.json'
+    ui.page = len(TABS) - 1
+    assert charge_conf() == {'target': 50, 'drain': True}
+    ui.on_gesture(('tap', 900, 1100), data, 0); ui.on_gesture(('tap', 900, 1100), data, 0)
+    ui.on_gesture(('tap', 500, 1250), data, 0)
+    assert charge_conf() == {'target': 60, 'drain': False}
+    for _ in range(20):
+        ui.on_gesture(('tap', 100, 1100), data, 0)
+    assert charge_conf()['target'] == 20
+    ui.render(data, False, 0)
     print('selftest ok')
 
 
