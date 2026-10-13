@@ -24,10 +24,13 @@ The kernel is built locally from pmaports, not the stock package:
 - **Local changes** (`pmaports/`): `pmaports-ec98ddd.diff` (APKBUILD changes), three dts patches (WCN3990 Wi-Fi node,
   CDSP, MPSS for Wi-Fi; Wi-Fi also needs `qcom,msa-fixed-perm` removed, which `k7.dtb` already has), and the
   `firmware-xiaomi-laurel-cdsp` APKBUILD.
-- **Firmware blobs are not included** (proprietary). The APKBUILD lists them; extract them from the stock
-  `modem_a` / `vendor_a` partitions or the [stock firmware archive](https://xmfirmwareupdater.com/archive/miui/laurel/).
+- **Firmware blobs are not included** (proprietary, no redistribution rights). `firmware/extract-firmware.sh` copies
+  them from your phone's own stock partitions (`modem_a`, `vendor_a`, `bluetooth_a`, read-only) into `/lib/firmware`:
+  modem/CDSP/Wi-Fi, the ath10k `board-2.bin` (via `ath10k-bdenc.py`), the GPU zap shader and Bluetooth.
+  Run as root on the phone (`apk add pil-squasher` first); `FW=/tmp/x` tests into another dir.
+  Firmware © Qualcomm / Xiaomi, sourced from the stock Android 11 (V12) partitions.
 
-Build: apply the diff and copy the patches into a pmaports checkout at `ec98ddd`, add the firmware files, then
+Build: apply the diff and copy the patches into a pmaports checkout at `ec98ddd`, run the extract script (or put its output in the firmware package dir), then
 `pmbootstrap build linux-nura-qcom-sm61x5 firmware-xiaomi-laurel-cdsp device-xiaomi-laurel`.
 
 ## Boot image with the dtb
