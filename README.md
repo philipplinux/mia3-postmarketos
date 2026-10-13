@@ -6,7 +6,7 @@ Tested on kernel `linux-nura-qcom-sm61x5` 7.2.3, booting slot b. No warranty: ba
 
 [![Buy me a beer?](https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20beer%3F&emoji=%F0%9F%8D%BA&slug=philipplinux&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff)](https://www.buymeacoffee.com/philipplinux)
 
-![tty1 console, then a swipe through the on-screen dashboard tabs](docs/demo.gif) ![Subpages: per-core CPU, IR remote, Bluetooth, USB mode, audio, CPU/GPU limits, temperature sensors, thermal guard](docs/subpages.gif)
+![tty1 console, then a swipe through the on-screen dashboard tabs](docs/demo.gif) ![tty1-4 pulldown, then subpages: per-core CPU, SSH, Wi-Fi details/picker/saved, IR remote, Bluetooth, USB mode, file browser, audio, CPU/GPU limits, temperature sensors, thermal guard](docs/subpages.gif)
 
 Web dashboard (port 8090):
 
