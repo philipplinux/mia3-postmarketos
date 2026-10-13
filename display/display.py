@@ -2928,6 +2928,7 @@ class Display:
     def gpu(self):
         # sway (DRM) on tty5 with its own keyboard (wvkbd); buffyboard and the tty strip would be hidden under it.
         self.keyboard(False)
+        fcntl.ioctl(self.tty,0x4B3A,0)       # KD_TEXT: the kernel ignores switches away from a KD_GRAPHICS VT
         fcntl.ioctl(self.tty,0x5606,GPU_VT)  # VT_ACTIVATE; no wait, a dead compositor must not hang the loop
         self.shown = False
         self.view = 'gpu'

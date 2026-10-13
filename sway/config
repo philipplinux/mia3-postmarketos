@@ -23,7 +23,7 @@ bar {
 assign [app_id="tty1"] workspace 1
 assign [app_id="tty2"] workspace 2
 assign [app_id="tty3"] workspace 3
-exec wvkbd-mobintl -H 270
+exec sh -c 'while :; do wvkbd-mobintl -H 270; sleep 1; done'
 # each foot comes back when closed (exit)
 exec sh -c 'while :; do foot -a tty1 journalctl -k -f -n 300 -o short-monotonic; sleep 1; done'
 exec sh -c 'while :; do foot -a tty2; sleep 1; done'
