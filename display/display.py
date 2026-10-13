@@ -89,6 +89,27 @@ OV_CPU = (30, 530, 525, 830)   # Overview CPU tile opens the per-core page
 OV_CONT, OV_PROC = (30, 1590, 525, 2160), (555, 1590, 1050, 2160)
 
 
+def batt_color(b):
+    pct = b.get('percent')
+    return CYAN if 'charg' in (b.get('status') or '').lower() and 'not' not in (b.get('status') or '').lower() \
+        else GREEN if pct is None or pct >= 50 else AMBER if pct >= 20 else '#ff6b6b'
+
+
+def batt_head(d, text, x, y, size, b):
+    """'~74%' (voltage estimate, hence the ~) plus a small battery icon filled to the level."""
+    value = '~' + fmt(b.get('percent'), suffix='%') if b.get('percent') is not None else '—'
+    text(x, y, value, size, bold=True)
+    ix = x + d.textlength(value, font=font(round(size * P), True)) / P + 30
+    iy, ih, iw, col = y + size * 0.42, size * 0.5, size * 0.85, batt_color(b)
+    d.rounded_rectangle((ix * P, iy * P, (ix + iw) * P, (iy + ih) * P), 6, outline=col, width=3)
+    d.rectangle(((ix + iw) * P, (iy + ih * .3) * P, (ix + iw + 8) * P, (iy + ih * .7) * P), fill=col)
+    fill = iw - 16
+    if b.get('percent'):
+        d.rectangle(((ix + 8) * P, (iy + 8) * P, (ix + 8 + fill * min(100, b['percent']) / 100) * P, (iy + ih - 8) * P),
+                    fill=col)
+    return col
+
+
 def render(data, stale=False):
     """Overview: battery, 2x2 gauges, connectivity, then container/process summaries (tap a card for its tab)."""
     image = Image.new('RGB', IMG, BG)
@@ -103,9 +124,9 @@ def render(data, stale=False):
     b, th = data.get('battery') or {}, data.get('thermal') or {}
     x0, y0, x1, y1 = OV_BATT
     card(x0, y0, x1 - x0, y1 - y0)
-    text(60, 175, fmt(b.get('percent'), suffix='%'), 130, bold=True)
+    col = batt_head(d, text, 60, 175, 130, b)
     text(60, 350, b.get('status') or 'No battery gauge', 36, MUTED, max_width=560)
-    bar(60, 420, 560, b.get('percent'), h=24, color=GREEN)
+    bar(60, 420, 560, b.get('percent'), h=24, color=col)
     temp = th.get('temp_c') if th.get('temp_c') is not None else b.get('temperature_c')
     for i, (label, value) in enumerate((('Uptime', uptime_text(data.get('uptime_seconds'))),
                                         ('Temperature', fmt(temp, 1, ' °C')))):
@@ -1790,9 +1811,9 @@ def page_battery(data, stale):
     header(image, 'Battery & power', stale)
     b = data.get('battery') or {}
     card(30, 170, 1020, 520)
-    text(60, 200, fmt(b.get('percent'), suffix='%'), 150, bold=True)
+    col = batt_head(d, text, 60, 200, 150, b)
     text(60, 400, b.get('status') or 'No battery gauge', 40, MUTED, max_width=960)
-    bar(60, 480, 960, b.get('percent'), h=28, color=GREEN)
+    bar(60, 480, 960, b.get('percent'), h=28, color=col)
     text(60, 560, 'Estimated from battery voltage' if b.get('name') else '', 30, MUTED)
     up = data.get('uptime_seconds')
     for i, (label, value) in enumerate((
@@ -2194,6 +2215,8 @@ def selftest():
     ui.render(data, False, 0)
     ui.on_gesture(('tap', 100, 80), data, 0)
     assert ui.sub is None
+    assert batt_color({'percent': 74}) == GREEN and batt_color({'percent': 10}) != AMBER
+    assert batt_color({'percent': 30, 'status': 'Charging'}) == CYAN and batt_color({'percent': 30, 'status': 'Not charging'}) == AMBER
     print('selftest ok')
 
 
