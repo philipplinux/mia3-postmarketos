@@ -45,7 +45,7 @@ Test: `apk add v4l-utils; ir-ctl -d /dev/lirc0 -S nec:0x0408` (LG TV power).
 - `thermal-guard/`: set `NOTIFY=user@host` in the unit to get an ssh notification before power-off (key in
   `/var/lib/thermal-guard/notify_key`), empty = off
 
-Each Python script has a `--selftest`.
+`display.py`, `chargectl.py` and `thermal-guard.py` have a `--selftest`.
 
 ## Shell
 
