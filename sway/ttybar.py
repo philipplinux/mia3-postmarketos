@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""swaybar status_command: tty1-tty4 tabs across the top. tty1-3 = sway workspaces (1: live kernel log, 2-3: shells),
-tty4 = the old fbcon console on VT 1 (mia3-display notices the switch and takes over there).
+"""swaybar status_command: tty1-tty4 tabs across the top. tty1 = the stock fbcon console on VT 1
+(kernel messages; mia3-display notices the switch and takes over there), tty2-4 = sway workspaces with foot shells.
 A tap on a tab arrives as an i3bar click event on stdin."""
 import fcntl, json, os, subprocess, sys, threading
 
 TABS = '1234'
+FBCON_TAB = '1'
 WIDTH = 84          # logical px per tab: 720 px panel / scale 2 / 4 tabs, minus 6 px of borders
 lock = threading.Lock()
 
@@ -39,7 +40,7 @@ def click(line):
         n = json.loads(line.strip().lstrip(',[')).get('name')
     except ValueError:
         return
-    if n == '4':
+    if n == FBCON_TAB:
         fd = os.open('/dev/tty', os.O_RDWR)    # sway's controlling tty (tty5) may switch VTs
         try:
             fcntl.ioctl(fd, 0x5606, 1)          # VT_ACTIVATE

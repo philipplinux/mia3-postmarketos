@@ -116,7 +116,6 @@ else
     run install -D -m644 "$R/sway/config" "$HOME/.config/sway/config"
     run install -D -m755 "$R/sway/ttybar.py" "$HOME/.config/sway/ttybar.py"
     run install -D -m755 "$R/sway/respawn.sh" "$HOME/.config/sway/respawn.sh"
-    run install -D -m755 "$R/sway/kmsg.sh" "$HOME/.config/sway/kmsg.sh"
     run install -D -m644 "$R/sway/foot.ini" "$HOME/.config/foot/foot.ini"
     echo "note: sway starts on tty5 at the next login there (sudo systemctl restart getty@tty5)"
     [ -d "$HOME/.local/share/blesh" ] || echo "note: ble.sh not installed, see README 'Shell' (github.com/akinomyoga/ble.sh -> ~/.local/share/blesh)"
