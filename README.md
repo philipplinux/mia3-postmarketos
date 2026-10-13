@@ -3,6 +3,52 @@
 A Xiaomi Mi A3 (model M1906F9SH, codename `laurel_sprout`, SoC SM6125) running postmarketOS edge as a headless home server with a touch dashboard on its own screen.
 Tested on kernel `linux-nura-qcom-sm61x5` 7.2.3, booting slot b. No warranty: back up your boot image first.
 
+
+![tty1 console, then a swipe through the on-screen dashboard tabs](docs/demo.gif)
+
+Web dashboard (port 8090):
+
+![Web dashboard](docs/web-dashboard.png)
+
+## Status
+
+| Feature | State | Notes |
+|---|---|---|
+| Display, touch | working | framebuffer UI (`display/`), ft5x06 touch, power-key cycle dashboard / tty1 / off |
+| Battery | working | `mia3-qg` fuel gauge driver (PMI632 QG: %, current, voltage), `pmi632_chg` charge limit (hold at 50 %) |
+| Wi-Fi | working | WCN3990 (ath10k), needs the MPSS modem firmware to boot |
+| Bluetooth | working | WCN3988, on-screen pairing |
+| IR blaster | working | `ir-spi-led`, remote on the Network page |
+| GPU | working | Adreno 610 (freedreno), governor and max clock from both dashboards |
+| Audio (bottom speaker) | working | MAX98937 amp via ADSP runtime overlays, volume/gain, chimes |
+| CPU frequency, temperatures | working | cpufreq-hw, TSENS + ADC thermal zones, thermal guard |
+| Dashboards | working | on-screen (6 tabs) and web (port 8090) |
+| microSD, USB networking, ssh, Tailscale, Docker | working | |
+| Modem | half configured | MPSS boots (Wi-Fi needs it), rmtfs/qrtr run; no calls, SMS or data set up |
+| Earpiece, microphones | untested, unconfigured | need WCD937x + LPASS macros + SoundWire (all off in the kernel config) |
+| GPS | untested, unconfigured | needs a QMI LOC userspace client |
+| Fingerprint | not attempted | |
+| Cameras | no | |
+
+## From stock to here
+
+Start: stock Android 11, slot b. pmOS replaces slot b and `userdata`; stock stays on slot a, so firmware can still be
+extracted from it later. Unlocking wipes the phone.
+
+1. **Unlock:** in Android enable Developer options → OEM unlocking. Reboot to fastboot (Volume down + Power while off),
+   run `fastboot flashing unlock` and confirm on the phone ([LineageOS guide](https://wiki.lineageos.org/devices/laurel_sprout/install/)).
+2. **Build:** on the PC, `pmbootstrap init` (vendor `xiaomi`, device `laurel`) with pmaports at `ec98ddd` plus `pmaports/`
+   from this repo, then `pmbootstrap install` (see "Kernel and pmaports").
+3. **Flash:** `pmbootstrap flasher flash_vbmeta`, `fastboot erase dtbo_b`, `pmbootstrap flasher flash_rootfs` (to
+   `userdata`), `pmbootstrap flasher flash_kernel` (to `boot_b`), `fastboot reboot`
+   ([pmOS wiki](https://wiki.postmarketos.org/wiki/Xiaomi_Mi_A3_(xiaomi-laurel))).
+4. **Reach it:** plug in USB, `ssh user@172.16.42.1`.
+5. **Firmware:** on the phone, `sudo sh firmware/extract-firmware.sh` (reads stock slot a), or keep a copy as the
+   private repo does. Then connect Wi-Fi with `nmcli`.
+6. **dtb:** append `dts/k7.dtb` to the kernel and reflash `boot_b` (see "Boot image with the dtb"). This brings up
+   cpufreq, Bluetooth, the IR blaster and Wi-Fi.
+7. **Everything else:** on the PC, `sh deploy.sh <ssh-host>` (see "Install (one shot)").
+
 | Folder | What |
 |---|---|
 | `dts/` | Device-tree with cpufreq-hw, Bluetooth (WCN3988 on GENI UART) and the IR blaster. `CPUFREQ.md` has the cpufreq-only write-up |
@@ -147,7 +193,7 @@ on tty1, swipe down from the top for its tab strip:
 
 | Tab | What |
 |---|---|
-| tty1 | the stock fbcon console on VT 1 (raw kernel messages, buffyboard keyboard); swipe down from the top for its tab strip |
+| tty1 | the stock fbcon console on VT 1 (kernel errors only: `system/90-mia3-console.conf`; buffyboard keyboard); swipe down from the top for its tab strip |
 | tty2, tty3, tty4 | foot shells in sway |
 
 `install.sh` sets it up: `sway/config`, `ttybar.py`, `respawn.sh` → `~/.config/sway/`, `sway/foot.ini` → `~/.config/foot/`,
@@ -158,6 +204,18 @@ tabs tty2-4 fall back to the fbcon console. kmscon was dropped: 10.0 is DRM-only
 Copy `shell/.bashrc` and `shell/.bash_profile` to `~`, `shell/bashrc.d/` to `~/.bashrc.d/`, `shell/starship.toml` to `~/.config/`.
 Install: `apk add bash starship fzf fd font-jetbrains-mono-nerd`, ble.sh from https://github.com/akinomyoga/ble.sh
 into `~/.local/share/blesh`, and `starship preset plain-text-symbols -o ~/.config/starship-plain.toml` for the console.
+
+## Sources
+
+- Kernel: [sm61x5-mainline/linux `v7.2.3-r0`](https://codeberg.org/sm61x5-mainline/linux/src/tag/v7.2.3-r0)
+- pmaports: [`ec98ddd`](https://gitlab.postmarketos.org/postmarketOS/pmaports/-/commit/ec98dddc8d525c874603a8e91ae6113d2b0c66d1),
+  device page on the [postmarketOS wiki](https://wiki.postmarketos.org/wiki/Xiaomi_Mi_A3_(xiaomi-laurel))
+- Unlock: [LineageOS laurel_sprout install guide](https://wiki.lineageos.org/devices/laurel_sprout/install/)
+- PMI632 charger and USB current: [Xiaomi kernel `smb5-lib.c`](https://github.com/MiCode/Xiaomi_Kernel_OpenSource/blob/d3766fc8cda2d96de2850faa9ce58e5a37ea9f9c/drivers/power/supply/qcom/smb5-lib.c#L3848-L3904)
+- Battery OCV table, amp registers, Bluetooth firmware names: the phone's stock `dtbo_a` / `bluetooth_a` partitions and
+  Xiaomi's GPL `max98937.c` (copies in the private repo)
+- TSENS module: mainline [`drivers/thermal/qcom/tsens.c`](https://codeberg.org/sm61x5-mainline/linux/src/tag/v7.2.3-r0/drivers/thermal/qcom/tsens.c)
+- Shell: [ble.sh](https://github.com/akinomyoga/ble.sh), [starship](https://starship.rs)
 
 ## Gotchas
 
