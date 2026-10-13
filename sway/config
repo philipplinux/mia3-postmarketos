@@ -1,11 +1,31 @@
-# Phone GPU terminal on tty5 (~/.config/sway/config): foot full screen above the wvkbd touch keyboard.
-# Started from ~/.bash_profile on tty5; the power key stays with mia3-display (it grabs the key).
+# Phone GPU terminal on tty5 (~/.config/sway/config): tabs tty1-tty3 are workspaces 1-3, each with a foot,
+# tty4 = the old fbcon console on VT 1
+# (tty1: live kernel log; a panic still shows: CONFIG_DRM_PANIC draws kmsg over sway),
+# above the wvkbd touch keyboard. Started from ~/.bash_profile on tty5; the power key stays with mia3-display.
 output DSI-1 scale 2 bg #000000 solid_color
 input type:touch map_to_output DSI-1
 seat * hide_cursor 1000
 default_border none
-# top gap: the rounded panel corners cut the first line otherwise
-gaps top 18
+# tty1-tty4 tabs (ttybar.py); the bar also keeps text out of the rounded top corners
+bar {
+    position top
+    height 32
+    font JetBrainsMono Nerd Font 11
+    workspace_buttons no
+    status_padding 0
+    status_edge_padding 0
+    status_command python3 ~/.config/sway/ttybar.py
+    colors {
+        background #1e1e1e
+        statusline #ffffff
+    }
+}
+assign [app_id="tty1"] workspace 1
+assign [app_id="tty2"] workspace 2
+assign [app_id="tty3"] workspace 3
 exec wvkbd-mobintl -H 270
-# foot comes back when closed (exit)
-exec sh -c 'while :; do foot; sleep 1; done'
+# each foot comes back when closed (exit)
+exec sh -c 'while :; do foot -a tty1 journalctl -k -f -n 300 -o short-monotonic; sleep 1; done'
+exec sh -c 'while :; do foot -a tty2; sleep 1; done'
+exec sh -c 'while :; do foot -a tty3; sleep 1; done'
+workspace 1

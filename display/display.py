@@ -5,6 +5,7 @@ import asyncio
 import ctypes
 from concurrent.futures import ThreadPoolExecutor
 import fcntl
+import glob
 import ipaddress
 import json
 import logging
@@ -253,9 +254,10 @@ POWER_BTNS = (('reboot', (30, 1620, 520, 1820)), ('poweroff', (560, 1620, 1050, 
 LIST_TOP = 150
 LIST_BOTTOM = TAB_Y - 10
 DRAG_PX = 40
-TTYS = (1, 2, 3, 4, 5)  # switcher strip: swipe down from the top edge to show, tap a tab (hides it) or swipe up
+TTYS = (1, 2, 3, 4)  # tabs: tty1-3 = sway workspaces on GPU_VT, tty4 = fbcon VT 1 (OLD_TAB). Strip on VT 1: swipe down from the top edge to show, tap a tab (hides it) or swipe up
 BAR_DIV = 24         # strip height = panel height / BAR_DIV (65 px on 1560)
-GPU_VT = 5           # power key: dashboard -> tty1 console -> sway/foot on tty5 (if running) -> blank
+OLD_TAB = 4          # tab showing the fbcon console (VT 1, buffyboard, raw kernel messages)
+GPU_VT = 5           # sway/foot (sway/config); power key: dashboard -> sway (fbcon tty1 if sway isn't running) -> blank
 VOL_STEP = 600        # volume keys scroll lists by this many px
 SWIPE_PX = 250
 LONG_S = 0.8
@@ -2927,11 +2929,23 @@ class Display:
         # sway (DRM) on tty5 with its own keyboard (wvkbd); buffyboard and the tty strip would be hidden under it.
         self.keyboard(False)
         fcntl.ioctl(self.tty,0x5606,GPU_VT)  # VT_ACTIVATE; no wait, a dead compositor must not hang the loop
+        self.shown = False
         self.view = 'gpu'
 
-    def switch_vt(self, n):
+    def switch_tab(self, n):
+        # tabs 1-3 are sway workspaces (sway draws its own tab bar, sway/ttybar.py); tab 4 and no sway: VT 1
+        if n != OLD_TAB and gpu_on():
+            self.switch_vt(GPU_VT)
+            sock = next(iter(glob.glob('/run/user/*/sway-ipc.*.sock')), None)
+            if sock:
+                sh('swaymsg', '-s', sock, 'workspace', str(n), timeout=5)
+        else:
+            self.switch_vt(1)
+
+    def switch_vt(self, n, activate=True):
         self.bar_on, self.under = False, None     # the switch repaints the whole console, strip included
-        fcntl.ioctl(self.tty, 0x5606, n)  # VT_ACTIVATE; buffyboard keeps running and types into the new VT
+        if activate:                              # False: someone else (sway's tty1 tab) already switched
+            fcntl.ioctl(self.tty, 0x5606, n)  # VT_ACTIVATE; buffyboard keeps running and types into the new VT
         if self.view == 'gpu' and n != GPU_VT:          # sway leaves its DRM buffer on the CRTC
             for _ in range(20):                           # no VT_WAITACTIVE: a stuck compositor must not hang the loop
                 if Path('/sys/class/tty/tty0/active').read_text().strip() == f'tty{n}':
@@ -2950,8 +2964,9 @@ class Display:
             vt = int(Path('/sys/class/tty/tty0/active').read_text().strip().removeprefix('tty'))
         except (OSError, ValueError):
             return
-        if not self.bar_on or vt not in TTYS or self.view == 'gpu':   # sway's DRM buffer hides fbdev
+        if not self.bar_on or vt != 1 or self.view == 'gpu':   # only fbcon VT 1 has the strip; sway draws its own
             return
+        vt = OLD_TAB                                              # VT 1 is the tty4 tab
         bh, rb = self.height // BAR_DIV, self.width * 4
         if vt not in self.bars:
             img = Image.new('RGB', (self.width, bh), '#1e1e1e')
@@ -3002,10 +3017,10 @@ class Display:
     def cycle(self,image):
         if not self.touched or self.view == 'blank':
             self.show(image)
+        elif self.view == 'dashboard' and gpu_on():
+            self.gpu()                  # sway: tabs tty1 (kernel log) - tty4
         elif self.view == 'dashboard':
-            self.terminal()
-        elif self.view == 'terminal' and gpu_on():
-            self.gpu()
+            self.terminal()             # fallback without sway: fbcon tty1
         else:
             self.hide()
         logging.info('Display view: %s',self.view)
@@ -3026,21 +3041,6 @@ class Display:
 
 def gpu_on():
     return sh('pgrep', '-x', 'sway')[0]
-
-
-class Keys:
-    """Virtual keyboard (uinput) for the terminal view: volume up/down -> F11/F12 (tmux scrollback, shell/tmux-console.conf)."""
-    def __init__(self):
-        self.fd = os.open('/dev/uinput', os.O_WRONLY | os.O_NONBLOCK)
-        fcntl.ioctl(self.fd, 0x40045564, 1)                # UI_SET_EVBIT EV_KEY
-        for k in (87, 88):                                 # KEY_F11, KEY_F12
-            fcntl.ioctl(self.fd, 0x40045565, k)            # UI_SET_KEYBIT
-        fcntl.ioctl(self.fd, 0x405c5503, struct.pack('4H80sI', 6, 0x1, 0x1, 1, b'mia3-display volume keys', 0))  # UI_DEV_SETUP
-        fcntl.ioctl(self.fd, 0x5501)                       # UI_DEV_CREATE
-
-    def tap(self, key):
-        ev = struct.Struct('@llHHi')
-        os.write(self.fd, b''.join(ev.pack(0, 0, *e) for e in ((1, key, 1), (0, 0, 0), (1, key, 0), (0, 0, 0))))
 
 
 def fetch():
@@ -3091,11 +3091,6 @@ def main():
         logging.info('Exclusive power-key input acquired')
     vol_fds = [os.open('/dev/input/' + p.name, os.O_RDONLY | os.O_NONBLOCK) for p in Path('/sys/class/input').glob('event*')
                if (p / 'device/name').read_text().strip() in ('pm8941_resin', 'gpio-keys')]   # volume down / up
-    try:
-        keys = Keys()
-    except OSError:
-        keys = None
-        logging.exception('uinput unavailable; no volume-key scrolling in the terminal')
     touch_fd = touch = None
     for p in Path('/sys/class/input').glob('event*'):
         if (p/'device/name').read_text().strip() == args.touch_name:
@@ -3195,10 +3190,7 @@ def main():
                     raw = os.read(fd, event.size * 32)
                     for offset in range(0, len(raw) - event.size + 1, event.size):
                         _, _, kind, code, value = event.unpack_from(raw, offset)
-                        if kind == 1 and code in (114, 115) and value and display.view == 'terminal' and keys \
-                                and Path('/sys/class/tty/tty0/active').read_text().strip() != 'tty1':  # tty1: no tmux
-                            keys.tap(87 if code == 115 else 88)                  # volume up -> F11 (scroll up)
-                        elif kind == 1 and code in (114, 115) and value and display.shown and action is None:
+                        if kind == 1 and code in (114, 115) and value and display.shown and action is None:
                             for g in (('scrollstart',), ('scroll', VOL_STEP if code == 115 else -VOL_STEP)):
                                 ui.on_gesture(g, latest, time.monotonic())   # same path as a finger drag
                             ui_dirty = True
@@ -3220,10 +3212,10 @@ def main():
                     if any(g[0] == 'tap' for g in gestures):
                         display.show(compose())
                         ui_dirty = False
-                elif display.view in ('terminal', 'gpu'):
+                elif display.view == 'terminal':                            # in sway its own bar switches
                     for g in gestures:                                      # buffyboard ignores touches above its keys
                         if g[0] == 'tap' and display.bar_on and g[2] < H // BAR_DIV:
-                            display.switch_vt(TTYS[min(len(TTYS) - 1, int(g[1] * len(TTYS) / W))])
+                            display.switch_tab(TTYS[min(len(TTYS) - 1, int(g[1] * len(TTYS) / W))])
                         elif g[0] == 'scrollend':
                             dy = touch.y - touch.y0
                             if not display.bar_on and touch.y0 < H // 15 and dy > H // 12:
@@ -3282,6 +3274,12 @@ def main():
 
             now = time.monotonic()
             if display.view in ('terminal', 'gpu') and now >= next_bar:
+                try:
+                    vt = int(Path('/sys/class/tty/tty0/active').read_text().strip().removeprefix('tty'))
+                except (OSError, ValueError):
+                    vt = None
+                if display.view == 'gpu' and vt == 1:   # sway's tty4 tab switched to VT 1 (mid-switch reads can show VT 8)
+                    display.switch_vt(vt, activate=False)
                 display.tty_bar()
                 next_bar = now + 0.25
             if touch and display.shown and action is None:

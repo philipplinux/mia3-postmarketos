@@ -130,20 +130,19 @@ Binds `0.0.0.0:8090` but answers only on the interfaces switched on in the phone
 
 ## Shell
 
-Power key cycles: dashboard → tty1 console (fbcon, plain prompt, buffyboard touch keyboard) → blank. A strip at the top of the
-consoles (swipe down from the top edge to show it, swipe up or pick a tty to hide) switches tty1–tty4; buffyboard restarts on each switch (the console repaints over it) and shows on all four.
-tty2–tty4 autologin: `display/getty-autologin.conf` → `/etc/systemd/system/getty@tty{2,3,4}.service.d/autologin.conf`,
-`systemctl enable getty@tty2 getty@tty3 getty@tty4`.
+Power key cycles: dashboard → terminal → blank. The terminal is sway + foot + wvkbd on VT 5 (`apk add sway foot
+wvkbd-mobintl grim`) with a tab bar at the top (`sway/ttybar.py`, swaybar status blocks; tap to switch):
 
-**GPU terminal on tty5:** sway + foot + wvkbd (`apk add sway foot wvkbd-mobintl grim`). `sway/config` → `~/.config/sway/config`,
-`sway/foot.ini` → `~/.config/foot/foot.ini`, `display/getty-autologin.conf` for `getty@tty5`; `.bash_profile` execs sway on tty5.
-The power key goes dashboard → tty1 → tty5 (when sway runs) → blank; the strip's tty5 tab also switches there (the strip
-itself can't draw over sway's DRM buffer). foot keeps 5000 lines of scrollback (volume keys scroll); the touch keyboard is wvkbd.
-kmscon was dropped: 10.0 is DRM-only, so neither the strip nor buffyboard could draw over it.
+| Tab | What |
+|---|---|
+| tty1 | foot running `journalctl -kf` (live kernel log, scrollable; a panic still draws over sway via `CONFIG_DRM_PANIC`) |
+| tty2, tty3 | foot shells |
+| tty4 | the old fbcon console on VT 1 (raw kernel messages, buffyboard keyboard); swipe down from the top for its tab strip |
 
-Scrollback: fbcon has none, so `.bash_profile` runs tty2–4 inside tmux (tty1 stays plain for kernel messages) (`apk add tmux`, `shell/tmux-console.conf` →
-`~/.config/tmux/console.conf`, two blank status lines as a top margin for the rounded corners). In the terminal view the display turns volume up/down into F11/F12 (uinput
-"mia3-display volume keys"): half a page up/down, scrolling past the bottom leaves copy mode.
+Install: `sway/config` + `sway/ttybar.py` → `~/.config/sway/`, `sway/foot.ini` → `~/.config/foot/foot.ini`,
+`display/getty-autologin.conf` → `/etc/systemd/system/getty@tty5.service.d/autologin.conf`, `systemctl enable getty@tty5`;
+`.bash_profile` execs sway on tty5. foot keeps 5000 lines of scrollback; the volume keys scroll it. Without sway running
+the power key falls back to the fbcon console. kmscon was dropped: 10.0 is DRM-only, nothing could draw over it.
 
 Copy `shell/.bashrc` and `shell/.bash_profile` to `~`, `shell/bashrc.d/` to `~/.bashrc.d/`, `shell/starship.toml` to `~/.config/`.
 Install: `apk add bash starship fzf fd font-jetbrains-mono-nerd`, ble.sh from https://github.com/akinomyoga/ble.sh
