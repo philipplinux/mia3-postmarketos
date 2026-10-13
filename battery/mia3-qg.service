@@ -1,0 +1,14 @@
+[Unit]
+Description=Mi A3 fuel gauge (PMI632 QG runtime overlay, read-only)
+# both load mia3_dtbo, which applies one overlay per load; audio's bringup leaves it loaded
+After=mia3-tsens.service mia3-audio.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# an overlay applies once per boot (a second apply fails with -EINVAL): skip it when the node is already there
+ExecStart=/bin/sh -c '[ -d /proc/device-tree/soc@0/spmi@1c40000/pmic@2/fuel-gauge@4800 ] || { rmmod mia3_dtbo 2>/dev/null; modprobe mia3_dtbo dtbo=mia3-qg.dtbo; }'
+ExecStart=/sbin/modprobe mia3_qg
+
+[Install]
+WantedBy=multi-user.target

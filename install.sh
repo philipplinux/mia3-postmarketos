@@ -93,6 +93,18 @@ else
     run sudo systemctl enable --now chargectl.service
 fi
 
+say "fuel gauge"
+if [ "$KMOD" = 0 ] || [ ! -f "$R/battery/mia3_qg.ko" ]; then
+    echo "skipped: build battery/mia3_qg.ko first (battery/README.md)"
+else
+    run sudo install -D -m644 "$R/battery/mia3_qg.ko" "/lib/modules/$(uname -r)/extra/mia3_qg.ko"
+    run sudo depmod -a
+    run sudo dtc -q -I dts -O dtb -o /lib/firmware/mia3-qg.dtbo "$R/battery/mia3-qg.dts"
+    run sudo install -D -m644 "$R/battery/mia3-qg.service" /etc/systemd/system/mia3-qg.service
+    run sudo systemctl daemon-reload
+    run sudo systemctl enable mia3-qg.service
+fi
+
 say "thermal guard"
 run sudo install -D -m755 "$R/thermal-guard/thermal-guard.py" /usr/local/lib/thermal-guard/thermal-guard.py
 run sudo install -d -m700 /var/lib/thermal-guard
@@ -128,7 +140,7 @@ echo "- Firmware: README 'Kernel and pmaports' (firmware/extract-firmware.sh, as
 echo "- Kernel/dtb: README 'Boot image with the dtb' (flash from a PC with fastboot)"
 
 say "service states"
-for u in mia3-display chargectl thermal-guard nftables getty@tty5; do
+for u in mia3-display mia3-qg chargectl thermal-guard nftables getty@tty5; do
     printf '%-16s %s\n' "$u" "$(systemctl is-active "$u" 2>&1 || true)"
 done
 printf '%-16s %s\n' mia3-dashboard "$(systemctl --user is-active mia3-dashboard 2>&1 || true)"
