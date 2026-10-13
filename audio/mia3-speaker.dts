@@ -1,0 +1,42 @@
+/dts-v1/;
+/plugin/;
+/* Speaker card: q6asm dais -> q6routing -> SECONDARY_MI2S_RX (gpio125-128) -> MAX98927 on QUP SE1 I2C.
+ * Apply with mia3_dtbo.ko ph=<asm dais>=0x8001,<afe dais>=0x8002,<routing>=0x8003 pdev=/sound (bringup.sh).
+ * 0x12 = tlmm in k7.dtb. Links speaker-first: overlay children attach in reverse order. */
+&{/soc@0/geniqup@4ac0000/i2c@4a84000} {
+	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
+	speaker_amp: amplifier@3a {
+		compatible = "maxim,max98927";
+		reg = <0x3a>;
+		reset-gpios = <0x12 95 1>;
+		#sound-dai-cells = <0>;
+	};
+};
+&{/soc@0/pinctrl@500000} {
+	mia3_sec_mi2s: mia3-sec-mi2s-state {
+		pins = "gpio125", "gpio126", "gpio127", "gpio128";
+		function = "sec_mi2s";
+		drive-strength = <8>;
+		bias-disable;
+	};
+};
+&{/} {
+	sound {
+		compatible = "qcom,qrb4210-rb2-sndcard";
+		model = "Mi-A3";
+		pinctrl-0 = <&mia3_sec_mi2s>;
+		pinctrl-names = "default";
+		speaker-dai-link {
+			link-name = "Speaker";
+			cpu { sound-dai = <0x8002 18>; };
+			platform { sound-dai = <0x8003>; };
+			codec { sound-dai = <&speaker_amp>; };
+		};
+		mm1-dai-link {
+			link-name = "MultiMedia1";
+			cpu { sound-dai = <0x8001 0>; };
+		};
+	};
+};

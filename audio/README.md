@@ -2,8 +2,7 @@
 
 Boots the Q6 ADSP at runtime via a device-tree overlay, without reflashing the dtb. Status: the ADSP runs
 (`/sys/class/remoteproc/remoteproc2` = `adsp running`) and its glink edge exposes `apr_audio_svc`,
-`fastrpcglink-apps-dsp` and `IPCRTR`. A sound card `Mi-A3` (speaker only) now registers, but **playback hangs
-the kernel**: see "Speaker card" below.
+`fastrpcglink-apps-dsp` and `IPCRTR`. The speaker card `Mi-A3` plays (2026-10-13): `bringup.sh`, then `play-test.sh`.
 
 | File | What |
 |---|---|
@@ -32,12 +31,13 @@ and `snd-soc-sm8250` are built out of tree from the matching kernel source and i
 |---|---|
 | `mia3_dtbo.c` | Generic loader: `dtbo=<file in /lib/firmware>`, `ph=path=phandle` (sets a phandle on a live node, `force=1` overrides), `pdev=<path>` (creates a platform device after apply) |
 | `mia3-apr.dts` | APR on the ADSP glink edge: q6core, q6afe (+ clocks), q6asm, q6adm |
-| `mia3-amp.dts` | Enables `i2c@4a84000` and adds `amplifier@3a` |
-| `mia3-card2.dts` | AFE `dai@18` (SECONDARY_MI2S_RX), sec_mi2s pins, `/sound2` card (`qcom,qrb4210-rb2-sndcard`) |
+| `mia3-apr.dts` (cont.) | also AFE `dai@18` (SECONDARY_MI2S_RX, SD0) and the q6asm SMMU stream (SID 0x41) |
+| `mia3-speaker.dts` | amp `amplifier@3a` on `i2c@4a84000`, sec_mi2s pins, `/sound` card (`qcom,qrb4210-rb2-sndcard`) |
+| `bringup.sh` | the whole runtime sequence, as root; reboot to undo |
+| `play-test.sh` | quiet test: amp at lowest gain, -40 dBFS 440 Hz, 1.5 s (`SILENT=1` plays zeros) |
 
-Order: `insmod mia3_adsp.ko` → `mia3_dtbo dtbo=mia3-apr.dtbo` → modprobe the q6 modules → restart the ADSP
-(remoteproc stop/start) → amp overlay + `snd-soc-max98927` → card overlay with `ph=` for the dais/routing/amp →
-`snd-soc-sm8250` → `card2` with `pdev=/sound2`. Run `rmmod mia3_dtbo` between overlays (it stays loaded).
+Order (`bringup.sh`): `mia3_adsp.ko` → APR overlay → q6 modules → ADSP restart → speaker overlay with `ph=` for
+the APR nodes → `snd-soc-sm8250`. `rmmod mia3_dtbo` between overlays (it stays loaded).
 
 Gotchas:
 - Links must be listed speaker-first: overlay children attach in reverse order, and q6routing fails (-19)
@@ -45,8 +45,8 @@ Gotchas:
 - Overlay children reversed also flipped q6asm dai order: the "MultiMedia1" PCM drives DSP stream MM3,
   so the route is `SEC_MI2S_RX Audio Mixer MultiMedia3`.
 - New nodes get phandles renumbered above the live maximum; refer to them by label, never raw numbers.
-- The first `aplay` (-40 dBFS, amp at minimum) hung, then hard-locked the kernel (CPU stall watchdog).
-  Not debugged yet: check the AFE port config (MCLK/bit clock, `qcom,sd-lines`) before playing again.
+- The q6asm dais need the SMMU stream the DSP really uses: SID **0x41** (stock `msm-audio-ion`). The first try used
+  sm6115's 0x1c1 and the first `aplay` hard-locked the kernel; with 0x41 playback runs clean.
 
 ## Missing for full audio
 

@@ -21,6 +21,10 @@
 				#address-cells = <1>;
 				#size-cells = <0>;
 				#sound-dai-cells = <1>;
+				dai@18 {	/* SECONDARY_MI2S_RX, stock rx-lines 0x1 = SD0 */
+					reg = <18>;
+					qcom,sd-lines = <0>;
+				};
 			};
 			clock-controller {
 				compatible = "qcom,q6afe-clocks";
@@ -35,7 +39,7 @@
 				#address-cells = <1>;
 				#size-cells = <0>;
 				#sound-dai-cells = <1>;
-				iommus = <0x21 0x1c1 0x0>;
+				iommus = <0x21 0x41 0x0>;	/* stock msm-audio-ion: SID 0x41 (0x1c1 is sm6115's) */
 				dai@0 { reg = <0>; };
 				dai@1 { reg = <1>; };
 				dai@2 { reg = <2>; };
