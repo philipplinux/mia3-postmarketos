@@ -39,7 +39,7 @@ run sudo apk add python3 py3-pillow font-opensans font-droid networkmanager-cli 
     bluez-tools v4l-utils iputils py3-dbus-fast font-nerd-fonts-symbols \
     openssh-client nftables
 [ "$KMOD" = 0 ] || run sudo apk add clang lld llvm make kmod
-[ "$SHELLSETUP" = 0 ] || run sudo apk add bash starship fzf fd font-jetbrains-mono-nerd kmscon kmscon-systemd
+[ "$SHELLSETUP" = 0 ] || run sudo apk add bash starship fzf fd font-jetbrains-mono-nerd sway foot wvkbd grim
 
 say "display"
 run sudo install -D -m755 "$R/display/display.py" /usr/local/lib/mia3-display/display.py
@@ -56,10 +56,13 @@ if [ -f "$R/display/54_mia3_dashboard.nft" ]; then
 fi
 run sudo systemctl daemon-reload
 run sudo systemctl enable --now mia3-display.service
-if [ "$SHELLSETUP" = 1 ]; then   # GPU terminal on tty2, third power-key view
-    run sudo install -D -m644 "$R/display/kmsconvt@tty2.conf" /etc/systemd/system/kmsconvt@tty2.service.d/mia3.conf
+if [ "$SHELLSETUP" = 1 ]; then   # sway terminal on tty5 (second power-key view), fbcon autologin on tty1 (tab 4)
+    for t in 1 5; do
+        run sudo install -D -m644 "$R/display/getty-autologin.conf" "/etc/systemd/system/getty@tty$t.service.d/autologin.conf"
+    done
     run sudo systemctl daemon-reload
-    run sudo systemctl enable --now kmsconvt@tty2.service
+    run sudo systemctl enable getty@tty1.service getty@tty5.service
+    run sudo systemctl disable getty@tty2.service getty@tty3.service getty@tty4.service
 fi
 
 say "dashboard"
@@ -110,6 +113,10 @@ else
     run install -d "$HOME/.bashrc.d" "$HOME/.config"
     for f in "$R"/shell/bashrc.d/*; do run install -m644 "$f" "$HOME/.bashrc.d/"; done
     run install -m644 "$R/shell/starship.toml" "$HOME/.config/starship.toml"
+    run install -D -m644 "$R/sway/config" "$HOME/.config/sway/config"
+    run install -D -m755 "$R/sway/ttybar.py" "$HOME/.config/sway/ttybar.py"
+    run install -D -m644 "$R/sway/foot.ini" "$HOME/.config/foot/foot.ini"
+    echo "note: sway starts on tty5 at the next login there (sudo systemctl restart getty@tty5)"
     [ -d "$HOME/.local/share/blesh" ] || echo "note: ble.sh not installed, see README 'Shell' (github.com/akinomyoga/ble.sh -> ~/.local/share/blesh)"
     [ -f "$HOME/.config/starship-plain.toml" ] || run sh -c "starship preset plain-text-symbols -o '$HOME/.config/starship-plain.toml'"
 fi
@@ -120,7 +127,7 @@ echo "- Firmware: README 'Kernel and pmaports' (firmware/extract-firmware.sh, as
 echo "- Kernel/dtb: README 'Boot image with the dtb' (flash from a PC with fastboot)"
 
 say "service states"
-for u in mia3-display chargectl thermal-guard nftables kmsconvt@tty2; do
+for u in mia3-display chargectl thermal-guard nftables getty@tty5; do
     printf '%-16s %s\n' "$u" "$(systemctl is-active "$u" 2>&1 || true)"
 done
 printf '%-16s %s\n' mia3-dashboard "$(systemctl --user is-active mia3-dashboard 2>&1 || true)"

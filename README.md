@@ -131,7 +131,7 @@ Binds `0.0.0.0:8090` but answers only on the interfaces switched on in the phone
 ## Shell
 
 Power key cycles: dashboard → terminal → blank. The terminal is sway + foot + wvkbd on VT 5 (`apk add sway foot
-wvkbd-mobintl grim`) with a tab bar at the top (`sway/ttybar.py`, swaybar status blocks; tap to switch):
+wvkbd grim`) with a tab bar at the top (`sway/ttybar.py`, swaybar status blocks; tap to switch):
 
 | Tab | What |
 |---|---|
@@ -139,9 +139,9 @@ wvkbd-mobintl grim`) with a tab bar at the top (`sway/ttybar.py`, swaybar status
 | tty2, tty3 | foot shells |
 | tty4 | the old fbcon console on VT 1 (raw kernel messages, buffyboard keyboard); swipe down from the top for its tab strip |
 
-Install: `sway/config` + `sway/ttybar.py` → `~/.config/sway/`, `sway/foot.ini` → `~/.config/foot/foot.ini`,
-`display/getty-autologin.conf` → `/etc/systemd/system/getty@tty5.service.d/autologin.conf`, `systemctl enable getty@tty5`;
-`.bash_profile` execs sway on tty5. foot keeps 5000 lines of scrollback; the volume keys scroll it. Without sway running
+`install.sh` sets it up: `sway/config` + `sway/ttybar.py` → `~/.config/sway/`, `sway/foot.ini` → `~/.config/foot/`,
+`display/getty-autologin.conf` → `getty@tty{1,5}.service.d/autologin.conf`, getty on tty2-4 disabled;
+`.bash_profile` execs sway on tty5. wvkbd and the foot tabs restart themselves if they die. foot keeps 5000 lines of scrollback; the volume keys scroll it. Without sway running
 the power key falls back to the fbcon console. kmscon was dropped: 10.0 is DRM-only, nothing could draw over it.
 
 Copy `shell/.bashrc` and `shell/.bash_profile` to `~`, `shell/bashrc.d/` to `~/.bashrc.d/`, `shell/starship.toml` to `~/.config/`.
