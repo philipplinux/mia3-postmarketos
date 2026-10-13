@@ -135,10 +135,11 @@ consoles (swipe down from the top edge to show it, swipe up or pick a tty to hid
 tty2–tty4 autologin: `display/getty-autologin.conf` → `/etc/systemd/system/getty@tty{2,3,4}.service.d/autologin.conf`,
 `systemctl enable getty@tty2 getty@tty3 getty@tty4`.
 
-Optional **kmscon** on tty2 (Nerd Font prompt): `apk add kmscon kmscon-systemd`, `display/kmsconvt@tty2.conf` →
-`/etc/systemd/system/kmsconvt@tty2.service.d/mia3.conf`, `systemctl enable --now kmsconvt@tty2` (it takes over `autovt@tty2`).
-The power key then adds it after tty1. kmscon 10 is DRM-only: the strip and touch keyboard can't show over it (tapping the
-top edge still switches), so it is off by default.
+**GPU terminal on tty5:** sway + foot + wvkbd (`apk add sway foot wvkbd-mobintl grim`). `sway/config` → `~/.config/sway/config`,
+`sway/foot.ini` → `~/.config/foot/foot.ini`, `display/getty-autologin.conf` for `getty@tty5`; `.bash_profile` execs sway on tty5.
+The power key goes dashboard → tty1 → tty5 (when sway runs) → blank; the strip's tty5 tab also switches there (the strip
+itself can't draw over sway's DRM buffer). foot keeps 5000 lines of scrollback; the touch keyboard is wvkbd.
+kmscon was dropped: 10.0 is DRM-only, so neither the strip nor buffyboard could draw over it.
 
 Scrollback: fbcon has none, so `.bash_profile` runs tty2–4 inside tmux (tty1 stays plain for kernel messages) (`apk add tmux`, `shell/tmux-console.conf` →
 `~/.config/tmux/console.conf`, two blank status lines as a top margin for the rounded corners). In the terminal view the display turns volume up/down into F11/F12 (uinput

@@ -253,9 +253,9 @@ POWER_BTNS = (('reboot', (30, 1620, 520, 1820)), ('poweroff', (560, 1620, 1050, 
 LIST_TOP = 150
 LIST_BOTTOM = TAB_Y - 10
 DRAG_PX = 40
-TTYS = (1, 2, 3, 4)  # switcher strip: swipe down from the top edge to show, tap a tab (hides it) or swipe up
+TTYS = (1, 2, 3, 4, 5)  # switcher strip: swipe down from the top edge to show, tap a tab (hides it) or swipe up
 BAR_DIV = 24         # strip height = panel height / BAR_DIV (65 px on 1560)
-KMSCON_VT = 2        # power key: dashboard -> tty1 console -> kmscon (if running; off by default) -> blank
+GPU_VT = 5           # power key: dashboard -> tty1 console -> sway/foot on tty5 (if running) -> blank
 VOL_STEP = 600        # volume keys scroll lists by this many px
 SWIPE_PX = 250
 LONG_S = 0.8
@@ -2770,7 +2770,7 @@ class Display:
         self.drm.drmModeGetProperty.restype = ctypes.POINTER(DRMProperty)
         self.drm.drmModeConnectorSetProperty.argtypes = [ctypes.c_int,ctypes.c_uint32,ctypes.c_uint32,ctypes.c_uint64]
         self.connector, self.dpms_property, self.initial_dpms = self.find_dpms()
-        self.drm.drmDropMaster(self.drm_fd)   # first opener is master; kmscon on tty1 needs it while shown
+        self.drm.drmDropMaster(self.drm_fd)   # first opener is master; sway on tty5 needs it while shown
         self.shown = False
         self.touched = False
         self.view = 'terminal'
@@ -2886,7 +2886,7 @@ class Display:
     def activate_graphics(self):
         # Preserve the readable panel initialized at boot. A recovery DPMS
         # cycle here can turn a working console into an unwakeable panel.
-        if not self.touched or self.view in ('terminal', 'kmscon'):
+        if not self.touched or self.view in ('terminal', 'gpu'):
             self.touched = True
             fcntl.ioctl(self.tty,0x4B3A,0)  # KD_TEXT while switching VTs
             fcntl.ioctl(self.tty,0x5606,8)
@@ -2895,7 +2895,7 @@ class Display:
             self.restore_fbdev()
 
     def restore_fbdev(self):
-        # kmscon leaves its own buffer on the CRTC; a forced set_par puts the fbdev one back.
+        # sway leaves its own buffer on the CRTC; a forced set_par puts the fbdev one back.
         var = bytearray(160)
         try:
             fcntl.ioctl(self.fd,0x4600,var)                       # FBIOGET_VSCREENINFO
@@ -2923,32 +2923,34 @@ class Display:
         self.view = 'terminal'
         self.keyboard(True)
 
-    def kmscon(self):
-        # kmscon on tty2 (DRM-only): buffyboard and the tty strip run but are hidden under its buffer.
-        fcntl.ioctl(self.tty,0x5606,KMSCON_VT)  # VT_ACTIVATE; no wait, a dead kmscon must not hang the loop
-        self.view = 'kmscon'
+    def gpu(self):
+        # sway (DRM) on tty5 with its own keyboard (wvkbd); buffyboard and the tty strip would be hidden under it.
+        self.keyboard(False)
+        fcntl.ioctl(self.tty,0x5606,GPU_VT)  # VT_ACTIVATE; no wait, a dead compositor must not hang the loop
+        self.view = 'gpu'
 
     def switch_vt(self, n):
         self.bar_on, self.under = False, None     # the switch repaints the whole console, strip included
         fcntl.ioctl(self.tty, 0x5606, n)  # VT_ACTIVATE; buffyboard keeps running and types into the new VT
-        if self.view == 'kmscon' and n != KMSCON_VT:     # kmscon leaves its DRM buffer on the CRTC
-            for _ in range(20):                           # no VT_WAITACTIVE: a stuck kmscon must not hang the loop
+        if self.view == 'gpu' and n != GPU_VT:          # sway leaves its DRM buffer on the CRTC
+            for _ in range(20):                           # no VT_WAITACTIVE: a stuck compositor must not hang the loop
                 if Path('/sys/class/tty/tty0/active').read_text().strip() == f'tty{n}':
                     break
                 time.sleep(0.05)
             self.restore_fbdev()
-        self.view = 'kmscon' if n == KMSCON_VT and kmscon_on() else 'terminal'
+        self.view = 'gpu' if n == GPU_VT and gpu_on() else 'terminal'
         self.keyboard(False)    # the console repaints the whole screen on a switch; a fresh buffyboard redraws
-        self.keyboard(True)     # (and resizes the new VT's rows to end above the keys)
+        if self.view == 'terminal':
+            self.keyboard(True)     # (and resizes the new VT's rows to end above the keys); sway has wvkbd
         logging.info('tty strip: tty%d', n)
 
     def tty_bar(self):
-        # fbcon/kmscon repaint over the strip, so the loop calls this often; it only writes rows that differ.
+        # fbcon repaints over the strip, so the loop calls this often; it only writes rows that differ.
         try:
             vt = int(Path('/sys/class/tty/tty0/active').read_text().strip().removeprefix('tty'))
         except (OSError, ValueError):
             return
-        if not self.bar_on or vt not in TTYS or self.view == 'kmscon':   # kmscon's DRM buffer hides fbdev
+        if not self.bar_on or vt not in TTYS or self.view == 'gpu':   # sway's DRM buffer hides fbdev
             return
         bh, rb = self.height // BAR_DIV, self.width * 4
         if vt not in self.bars:
@@ -3002,8 +3004,8 @@ class Display:
             self.show(image)
         elif self.view == 'dashboard':
             self.terminal()
-        elif self.view == 'terminal' and kmscon_on():
-            self.kmscon()
+        elif self.view == 'terminal' and gpu_on():
+            self.gpu()
         else:
             self.hide()
         logging.info('Display view: %s',self.view)
@@ -3022,8 +3024,8 @@ class Display:
         os.close(self.fd)
 
 
-def kmscon_on():
-    return sh('systemctl', 'is-active', '--quiet', f'kmsconvt@tty{KMSCON_VT}')[0]
+def gpu_on():
+    return sh('pgrep', '-x', 'sway')[0]
 
 
 class Keys:
@@ -3218,7 +3220,7 @@ def main():
                     if any(g[0] == 'tap' for g in gestures):
                         display.show(compose())
                         ui_dirty = False
-                elif display.view in ('terminal', 'kmscon'):
+                elif display.view in ('terminal', 'gpu'):
                     for g in gestures:                                      # buffyboard ignores touches above its keys
                         if g[0] == 'tap' and display.bar_on and g[2] < H // BAR_DIV:
                             display.switch_vt(TTYS[min(len(TTYS) - 1, int(g[1] * len(TTYS) / W))])
@@ -3279,7 +3281,7 @@ def main():
                         pressed_at = None
 
             now = time.monotonic()
-            if display.view in ('terminal', 'kmscon') and now >= next_bar:
+            if display.view in ('terminal', 'gpu') and now >= next_bar:
                 display.tty_bar()
                 next_bar = now + 0.25
             if touch and display.shown and action is None:
