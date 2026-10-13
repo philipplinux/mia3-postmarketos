@@ -130,12 +130,15 @@ Binds `0.0.0.0:8090` but answers only on the interfaces switched on in the phone
 
 ## Shell
 
-Power key cycles: dashboard → tty1 console (fbcon, plain prompt, buffyboard touch keyboard) → **kmscon** on tty2
-(Nerd Font prompt, `--no-mouse`) → blank. On the consoles a strip at the top switches tty1–tty4 by tap (tty3/tty4 autologin via
-`display/getty-autologin.conf` → `/etc/systemd/system/getty@tty{3,4}.service.d/autologin.conf`, `systemctl enable getty@tty3 getty@tty4`).
-kmscon 10 is DRM-only, so on tty2 the strip and the touch keyboard are hidden under its buffer (tapping the top edge still switches).
-kmscon: `apk add kmscon kmscon-systemd`, `display/kmsconvt@tty2.conf` → `/etc/systemd/system/kmsconvt@tty2.service.d/mia3.conf`,
-`systemctl enable --now kmsconvt@tty2`. The display drops DRM master at start so kmscon can take it.
+Power key cycles: dashboard → tty1 console (fbcon, plain prompt, buffyboard touch keyboard) → blank. A strip at the top of the
+consoles switches tty1–tty4 by tap; buffyboard restarts on each switch (the console repaints over it) and shows on all four.
+tty2–tty4 autologin: `display/getty-autologin.conf` → `/etc/systemd/system/getty@tty{2,3,4}.service.d/autologin.conf`,
+`systemctl enable getty@tty2 getty@tty3 getty@tty4`.
+
+Optional **kmscon** on tty2 (Nerd Font prompt): `apk add kmscon kmscon-systemd`, `display/kmsconvt@tty2.conf` →
+`/etc/systemd/system/kmsconvt@tty2.service.d/mia3.conf`, `systemctl enable --now kmsconvt@tty2` (it takes over `autovt@tty2`).
+The power key then adds it after tty1. kmscon 10 is DRM-only: the strip and touch keyboard can't show over it (tapping the
+top edge still switches), so it is off by default.
 
 Copy `shell/.bashrc` and `shell/.bash_profile` to `~`, `shell/bashrc.d/` to `~/.bashrc.d/`, `shell/starship.toml` to `~/.config/`.
 Install: `apk add bash starship fzf fd font-jetbrains-mono-nerd`, ble.sh from https://github.com/akinomyoga/ble.sh

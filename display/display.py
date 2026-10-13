@@ -243,7 +243,7 @@ LIST_BOTTOM = TAB_Y - 10
 DRAG_PX = 40
 TTYS = (1, 2, 3, 4)  # switcher strip on top of the consoles; tap a tab to change VT
 BAR_DIV = 24         # strip height = panel height / BAR_DIV (65 px on 1560)
-KMSCON_VT = 2        # power key: dashboard -> tty1 console -> kmscon (if running) -> blank; touch keyboard on both
+KMSCON_VT = 2        # power key: dashboard -> tty1 console -> kmscon (if running; off by default) -> blank
 VOL_STEP = 600        # volume keys scroll lists by this many px
 SWIPE_PX = 250
 LONG_S = 0.8
@@ -2757,7 +2757,9 @@ class Display:
                     break
                 time.sleep(0.05)
             self.restore_fbdev()
-        self.view = 'kmscon' if n == KMSCON_VT else 'terminal'
+        self.view = 'kmscon' if n == KMSCON_VT and kmscon_on() else 'terminal'
+        self.keyboard(False)    # the console repaints the whole screen on a switch; a fresh buffyboard redraws
+        self.keyboard(True)     # (and resizes the new VT's rows to end above the keys)
         logging.info('tty strip: tty%d', n)
 
     def tty_bar(self):
@@ -2766,7 +2768,7 @@ class Display:
             vt = int(Path('/sys/class/tty/tty0/active').read_text().strip().removeprefix('tty'))
         except (OSError, ValueError):
             return
-        if vt not in TTYS or vt == KMSCON_VT:   # kmscon's DRM buffer hides fbdev
+        if vt not in TTYS or self.view == 'kmscon':   # kmscon's DRM buffer hides fbdev
             return
         bh, rb = self.height // BAR_DIV, self.width * 4
         if vt not in self.bars:
@@ -2802,7 +2804,7 @@ class Display:
             self.show(image)
         elif self.view == 'dashboard':
             self.terminal()
-        elif self.view == 'terminal' and sh('systemctl', 'is-active', '--quiet', f'kmsconvt@tty{KMSCON_VT}')[0]:
+        elif self.view == 'terminal' and kmscon_on():
             self.kmscon()
         else:
             self.hide()
@@ -2820,6 +2822,10 @@ class Display:
         os.close(self.drm_fd)
         self.memory.close()
         os.close(self.fd)
+
+
+def kmscon_on():
+    return sh('systemctl', 'is-active', '--quiet', f'kmsconvt@tty{KMSCON_VT}')[0]
 
 
 def fetch():
