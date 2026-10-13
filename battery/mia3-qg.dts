@@ -1,9 +1,77 @@
 /dts-v1/;
 /plugin/;
-/* PMI632 QGauge (stock qpnp,qg / qcom,qgauge@4800): register base only, no IRQs, read-only driver mia3_qg.ko. */
+/* PMI632 QGauge (stock qpnp,qg / qcom,qgauge@4800): register base only, no IRQs, read-only driver mia3_qg.ko.
+ * Battery: stock dtbo_a_16 profile "S88512_mtp_Sunwoda_4V4_4030mAh" (qcom,pc-temp-v1-lut, 25 degC column; the Feimaotui
+ * and default 4030 mAh profiles differ by < 15 mV). ocv-capacity-table-0 = <OCV uV, percent>. */
 &{/soc@0/spmi@1c40000/pmic@2} {
 	qg: fuel-gauge@4800 {
 		compatible = "mia3,pmi632-qg";
 		reg = <0x4800>;
+		monitored-battery = <&mia3_batt>;
+	};
+};
+&{/} {
+	mia3_batt: battery {
+		compatible = "simple-battery";
+		charge-full-design-microamp-hours = <4030000>;
+		voltage-min-design-microvolt = <3400000>;
+		voltage-max-design-microvolt = <4400000>;
+		ocv-capacity-celsius = <25>;
+		ocv-capacity-table-0 = <4385800 100>,
+				<4363300 98>,
+				<4340300 96>,
+				<4316500 94>,
+				<4293000 92>,
+				<4269800 90>,
+				<4246700 88>,
+				<4223500 86>,
+				<4200400 84>,
+				<4177800 82>,
+				<4155600 80>,
+				<4134200 78>,
+				<4113900 76>,
+				<4094400 74>,
+				<4074000 72>,
+				<4052600 70>,
+				<4032300 68>,
+				<4013800 66>,
+				<3996400 64>,
+				<3980800 62>,
+				<3966800 60>,
+				<3950100 58>,
+				<3924400 56>,
+				<3899400 54>,
+				<3884800 52>,
+				<3874300 50>,
+				<3864500 48>,
+				<3854800 46>,
+				<3845900 44>,
+				<3837800 42>,
+				<3830600 40>,
+				<3824100 38>,
+				<3818400 36>,
+				<3813300 34>,
+				<3809000 32>,
+				<3805000 30>,
+				<3800900 28>,
+				<3797000 26>,
+				<3791800 24>,
+				<3783500 22>,
+				<3772900 20>,
+				<3761600 18>,
+				<3748500 16>,
+				<3732800 14>,
+				<3718200 12>,
+				<3708500 10>,
+				<3705700 9>,
+				<3704200 8>,
+				<3702500 7>,
+				<3697500 6>,
+				<3673000 5>,
+				<3629400 4>,
+				<3571500 3>,
+				<3492800 2>,
+				<3368900 1>,
+				<3000000 0>;
 	};
 };

@@ -12,8 +12,10 @@ IRQs, FIFO hold and SOC-from-OCV are dropped: this version only reads, never wri
 Try (not loaded at boot): `dtc -I dts -O dtb -o /lib/firmware/mia3-qg.dtbo mia3-qg.dts`, `rmmod mia3_dtbo; insmod mia3_dtbo.ko dtbo=mia3-qg.dtbo`, `insmod mia3_qg.ko`.
 The overlay stays until reboot. The module borrows the regmap of the `typec@1500` sibling device (same trick as `pmi632_chg`).
 
+Capacity: `ocv-capacity-table-0` in `mia3-qg.dts` is the stock `qcom,pc-temp-v1-lut` (25 degC column) of profile `S88512_mtp_Sunwoda_4V4_4030mAh` from the stock dtbo (`dtbo_a_16`, private repo `stock/dt/`); the Feimaotui and default 4030 mAh profiles are within 15 mV. `capacity` = `power_supply_batinfo_ocv2cap(vbat - I x rbatt)` at a fixed 25 degC; `rbatt_mohm` module param (default 150, the profile has no ESR) is writable at `/sys/module/mia3_qg/parameters/`. No coulomb counting yet. A second overlay on the same node merges (no reboot needed to change the table).
+
 Properties: `present`, `voltage_now` (LAST_ADC_V), `voltage_boot` (S7 PON OCV), `voltage_ocv` (S3 good OCV, -ENODATA until the
-QG took one), `current_now` (LAST_ADC_I), `current_avg` (burst average). Voltage raw x 194637 nV, current raw x 152588 pA,
+QG took one), `current_now` (LAST_ADC_I), `current_avg` (burst average), `capacity`. Voltage raw x 194637 nV, current raw x 152588 pA,
 sign flipped to the power_supply ABI (negative = discharge).
 
 Measured 2026-10-13 (usb_suspend=1, on battery): `voltage_now` 3.800/3.789/3.815/3.813/3.814/3.817 V vs IIO `vbat_sns` 3.780/3.794/3.809/3.808/3.812/3.814 V
@@ -21,3 +23,13 @@ Measured 2026-10-13 (usb_suspend=1, on battery): `voltage_now` 3.800/3.789/3.815
 
 Kernel gotcha: module `struct module` size depends on config, so the build tree needs `CONFIG_PAHOLE_VERSION` = the phone's, else insmod says
 ".gnu.linkonce.this_module section size must match".
+
+## Kernel tree and build
+
+1. `curl -L https://codeberg.org/sm61x5-mainline/linux/archive/v7.2.3-r0.tar.gz | tar xz` (used: `/tmp/qgw/k/linux`; temporary, re-fetch as needed).
+2. `ssh mia3 cat /boot/config > linux/.config`, then in the tree: `make ARCH=arm64 LLVM=1 olddefconfig modules_prepare` (needs `pahole`).
+3. `make KDIR=<tree>` here. The host has no clang: it was built in `podman run alpine:edge` with `apk add clang lld llvm make flex bison openssl-dev bc perl elfutils-dev python3 diffutils linux-headers musl-dev gcc libgcc pahole`, tree mounted at `/src`.
+4. Phone has `dtc`: compile the `.dts` there.
+
+Capacity check 2026-10-13 (chargectl holding, current ~0): `capacity` 47 % at 3.862 V; the dashboard/chargectl table gives ~54 % for the same voltage.
+Current sign while charging not verified (charging was disabled by chargectl; not touched).

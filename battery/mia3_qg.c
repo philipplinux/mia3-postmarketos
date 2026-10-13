@@ -19,8 +19,12 @@
 #define QG_LAST_ADC_I		0xc2
 #define QG_LAST_BURST_AVG_I	0xc6
 
+static int rbatt_mohm = 150;	/* no ESR in the stock profile; tune until capacity doesn't jump on load changes */
+module_param(rbatt_mohm, int, 0644);
+
 struct qg {
 	struct regmap *map;
+	struct power_supply_battery_info *info;
 	unsigned int base;
 };
 
@@ -77,6 +81,18 @@ static int get_prop(struct power_supply *psy, enum power_supply_property p,
 		return rd_ua(qg, QG_LAST_ADC_I, &val->intval);
 	case POWER_SUPPLY_PROP_CURRENT_AVG:
 		return rd_ua(qg, QG_LAST_BURST_AVG_I, &val->intval);
+	case POWER_SUPPLY_PROP_CAPACITY: {	/* OCV table lookup of vbat - I * R, fixed 25 degC */
+		int v, i;
+
+		if (!qg->info)
+			return -ENODATA;
+		ret = rd_uv(qg, QG_LAST_ADC_V, &v) ?: rd_ua(qg, QG_LAST_BURST_AVG_I, &i);
+		if (ret)
+			return ret;
+		v -= div_s64((s64)i * rbatt_mohm, 1000);
+		val->intval = power_supply_batinfo_ocv2cap(qg->info, v, 250);
+		return 0;
+	}
 	default:
 		return -EINVAL;
 	}
@@ -85,6 +101,7 @@ static int get_prop(struct power_supply *psy, enum power_supply_property p,
 static const enum power_supply_property props[] = {
 	POWER_SUPPLY_PROP_PRESENT, POWER_SUPPLY_PROP_VOLTAGE_NOW, POWER_SUPPLY_PROP_VOLTAGE_OCV,
 	POWER_SUPPLY_PROP_VOLTAGE_BOOT, POWER_SUPPLY_PROP_CURRENT_NOW, POWER_SUPPLY_PROP_CURRENT_AVG,
+	POWER_SUPPLY_PROP_CAPACITY,
 };
 
 static const struct power_supply_desc desc = {
@@ -98,6 +115,7 @@ static const struct power_supply_desc desc = {
 static int qg_probe(struct platform_device *pdev)
 {
 	struct power_supply_config cfg = {};
+	struct power_supply *psy;
 	struct qg *qg = devm_kzalloc(&pdev->dev, sizeof(*qg), GFP_KERNEL);
 	unsigned int type;
 	int ret;
@@ -119,7 +137,13 @@ static int qg_probe(struct platform_device *pdev)
 	if (ret || type != 0x0d)
 		return dev_err_probe(&pdev->dev, ret ?: -ENODEV, "not a QG (type 0x%x)\n", type);
 	cfg.drv_data = qg;
-	return PTR_ERR_OR_ZERO(devm_power_supply_register(&pdev->dev, &desc, &cfg));
+	cfg.fwnode = dev_fwnode(&pdev->dev);
+	psy = devm_power_supply_register(&pdev->dev, &desc, &cfg);
+	if (IS_ERR(psy))
+		return PTR_ERR(psy);
+	if (power_supply_get_battery_info(psy, &qg->info))
+		dev_warn(&pdev->dev, "no monitored-battery, no capacity\n");
+	return 0;
 }
 
 static const struct of_device_id ids[] = { { .compatible = "mia3,pmi632-qg" }, {} };
