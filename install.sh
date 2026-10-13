@@ -35,11 +35,13 @@ write_default() {
 [ -f "$R/display/display.py" ] || { echo "run from the repo checkout" >&2; exit 1; }
 
 say "apk packages"
-run sudo apk add python3 py3-pillow font-opensans font-droid networkmanager-cli bluez bluez-deprecated \
+# apk exits 1 ("1 error") when the world holds locally built packages (firmware, kernel) that no repo has
+apk_add() { run sudo apk add "$@" || echo "apk reported an error (locally built packages?), continuing"; }
+apk_add python3 py3-pillow font-opensans font-droid networkmanager-cli bluez bluez-deprecated \
     bluez-tools v4l-utils iputils py3-dbus-fast font-nerd-fonts-symbols \
     openssh-client nftables
-[ "$KMOD" = 0 ] || run sudo apk add clang lld llvm make kmod dtc i2c-tools alsa-utils
-[ "$SHELLSETUP" = 0 ] || run sudo apk add bash starship fzf fd font-jetbrains-mono-nerd sway foot wvkbd grim
+[ "$KMOD" = 0 ] || apk_add clang lld llvm make kmod dtc i2c-tools alsa-utils
+[ "$SHELLSETUP" = 0 ] || apk_add bash starship fzf fd font-jetbrains-mono-nerd sway foot wvkbd grim
 
 say "display"
 run sudo install -D -m755 "$R/display/display.py" /usr/local/lib/mia3-display/display.py
