@@ -1,0 +1,48 @@
+// ADSP (LPASS) boot test for the Mi A3 (SM6125). Values from the stock trinket dtb; raw phandles from
+// dts/k7.dts: 0x01 intc, 0x0d apcs mailbox, 0x13 rpmcc. 0x7ff0 is set on memory@55300000 by mia3_adsp.ko.
+/dts-v1/;
+/plugin/;
+
+&{/} {
+	smp2p-adsp {
+		compatible = "qcom,smp2p";
+		qcom,smem = <443 429>;
+		interrupts = <0 0x189 1>;
+		mboxes = <0x0d 10>;
+		qcom,local-pid = <0>;
+		qcom,remote-pid = <2>;
+
+		adsp_out: master-kernel {
+			qcom,entry-name = "master-kernel";
+			#qcom,smem-state-cells = <1>;
+		};
+
+		adsp_in: slave-kernel {
+			qcom,entry-name = "slave-kernel";
+			interrupt-controller;
+			#interrupt-cells = <2>;
+		};
+	};
+};
+
+&{/soc@0} {
+	remoteproc@ab00000 {
+		compatible = "qcom,sm6115-adsp-pas";
+		reg = <0x0 0x0ab00000 0x0 0x100>;
+		firmware-name = "qcom/sm6125/xiaomi/laurel/adsp.mdt";
+		interrupts-extended = <0x01 0 0x18c 1>, <&adsp_in 0 1>, <&adsp_in 1 1>, <&adsp_in 2 1>, <&adsp_in 3 1>;
+		interrupt-names = "wdog", "fatal", "ready", "handover", "stop-ack";
+		clocks = <0x13 0>;
+		clock-names = "xo";
+		memory-region = <0x7ff0>;
+		qcom,smem-states = <&adsp_out 0>;
+		qcom,smem-state-names = "stop";
+
+		glink-edge {
+			interrupts = <0 0x187 1>;
+			label = "lpass";
+			qcom,remote-pid = <2>;
+			mboxes = <0x0d 8>;
+		};
+	};
+};
