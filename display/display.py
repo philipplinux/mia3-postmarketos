@@ -136,9 +136,9 @@ def render(data, stale=False, cores=False):
         temp = th.get('temp_c') if th.get('temp_c') is not None else b.get('temperature_c')
         for i, (label, value, glyph) in enumerate((('Uptime', uptime_text(data.get('uptime_seconds')), '\U000F0954'),
                                                    ('Temperature', fmt(temp, 1, ' °C'), '\U000F050F'))):
-            text(720, 210 + i * 150, glyph, 34, CYAN, anchor='mm', icon=True)
-            text(760, 195 + i * 150, label, 30, MUTED)
-            text(700, 235 + i * 150, value, 52, AMBER if label == 'Temperature' and th.get('over') else TEXT, bold=True)
+            text(700, 205 + i * 150, label, 30, MUTED)
+            text(720, 263 + i * 150, glyph, 34, CYAN, anchor='mm', icon=True)
+            text(755, 235 + i * 150, value, 52, AMBER if label == 'Temperature' and th.get('over') else TEXT, bold=True)
 
     cpu, mem, st, gpu = (data.get(k) or {} for k in ('cpu', 'memory', 'storage', 'gpu'))
     load = gpu.get('utilization_percent')
@@ -159,9 +159,9 @@ def render(data, stale=False, cores=False):
             bar(x + 30, y + 190, 435, b.get('percent'), color=col)
             text(x + 30, y + 230, b.get('status') or 'No battery gauge', 30, MUTED, max_width=435)
             continue
-        text(x + 50, y + 45, tile_icons[i], 36, CYAN, anchor='mm', icon=True)
-        text(x + 85, y + 25, label, 34, MUTED, max_width=385)
-        text(x + 30, y + 70, value, 72, bold=True, max_width=435)
+        text(x + 30, y + 25, label, 34, MUTED, max_width=435)
+        text(x + 48, y + 118, tile_icons[i], 36, CYAN, anchor='mm', icon=True)
+        text(x + 80, y + 75, value, 64, bold=True, max_width=395)
         bar(x + 30, y + 190, 435, pct)
         text(x + 30, y + 230, sub, 30, MUTED, max_width=435)
 
