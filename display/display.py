@@ -241,6 +241,8 @@ POWER_BTNS = (('reboot', (30, 1620, 520, 1820)), ('poweroff', (560, 1620, 1050, 
 LIST_TOP = 150
 LIST_BOTTOM = TAB_Y - 10
 DRAG_PX = 40
+TTYS = (1, 2, 3, 4)  # switcher strip on top of the consoles; tap a tab to change VT
+BAR_DIV = 24         # strip height = panel height / BAR_DIV (65 px on 1560)
 KMSCON_VT = 2        # power key: dashboard -> tty1 console -> kmscon (if running) -> blank; touch keyboard on both
 VOL_STEP = 600        # volume keys scroll lists by this many px
 SWIPE_PX = 250
@@ -2596,6 +2598,7 @@ class Display:
         self.touched = False
         self.view = 'terminal'
         self.kb = None
+        self.bars = {}
 
     def keyboard(self, on):
         if on and self.kb is None:
@@ -2742,9 +2745,48 @@ class Display:
         self.keyboard(True)
 
     def kmscon(self):
-        # kmscon terminal on tty2 (kmsconvt@tty2, --no-drm): draws on fbdev, so buffyboard stays on top.
+        # kmscon on tty2 (DRM-only): buffyboard and the tty strip run but are hidden under its buffer.
         fcntl.ioctl(self.tty,0x5606,KMSCON_VT)  # VT_ACTIVATE; no wait, a dead kmscon must not hang the loop
         self.view = 'kmscon'
+
+    def switch_vt(self, n):
+        fcntl.ioctl(self.tty, 0x5606, n)  # VT_ACTIVATE; buffyboard keeps running and types into the new VT
+        if self.view == 'kmscon' and n != KMSCON_VT:     # kmscon leaves its DRM buffer on the CRTC
+            for _ in range(20):                           # no VT_WAITACTIVE: a stuck kmscon must not hang the loop
+                if Path('/sys/class/tty/tty0/active').read_text().strip() == f'tty{n}':
+                    break
+                time.sleep(0.05)
+            self.restore_fbdev()
+        self.view = 'kmscon' if n == KMSCON_VT else 'terminal'
+
+    def tty_bar(self):
+        # fbcon/kmscon repaint over the strip, so the loop calls this often; it only writes rows that differ.
+        try:
+            vt = int(Path('/sys/class/tty/tty0/active').read_text().strip().removeprefix('tty'))
+        except (OSError, ValueError):
+            return
+        if vt not in TTYS or vt == KMSCON_VT:   # kmscon's DRM buffer hides fbdev
+            return
+        bh, rb = self.height // BAR_DIV, self.width * 4
+        if vt not in self.bars:
+            img = Image.new('RGB', (self.width, bh), '#1e1e1e')
+            d, bw = ImageDraw.Draw(img), self.width // len(TTYS)
+            for i, n in enumerate(TTYS):
+                if n == vt:
+                    d.rounded_rectangle((i * bw + 4, 4, (i + 1) * bw - 5, bh - 5), 8, fill='#3a6ea5')
+                d.text((i * bw + bw // 2, bh // 2), f'tty{n}', fill='white', font=font(bh * 9 // 20, bold=n == vt), anchor='mm')
+            self.bars[vt] = img.tobytes('raw', 'BGRX')
+        raw, changed = self.bars[vt], False
+        for row in range(bh):
+            off = (row + self.yoffset) * self.stride + self.xoffset * 4
+            if self.memory[off:off + rb] != raw[row * rb:(row + 1) * rb]:
+                self.memory[off:off + rb] = raw[row * rb:(row + 1) * rb]
+                changed = True
+        if changed:
+            try:
+                self.refresh_panel()
+            except (OSError, RuntimeError):
+                pass
 
     def hide(self):
         # Black pixels on the AMOLED panel, without its unreliable power cycle.
@@ -2902,7 +2944,7 @@ def main():
     ui_dirty = False
     last_draw = 0.0
     detail_future = restart_future = pending = wifi_future = None
-    next_detail = 0.0
+    next_detail = next_bar = 0.0
     dpool = ThreadPoolExecutor(max_workers=2)
 
     def compose():
@@ -2948,6 +2990,11 @@ def main():
                     if any(g[0] == 'tap' for g in gestures):
                         display.show(compose())
                         ui_dirty = False
+                elif display.view in ('terminal', 'kmscon'):
+                    for g in gestures:                                      # buffyboard ignores taps above its keys
+                        if g[0] == 'tap' and g[2] * display.height / H < display.height // BAR_DIV:
+                            display.switch_vt(TTYS[min(len(TTYS) - 1, int(g[1] * len(TTYS) / W))])
+                            display.tty_bar()
                 elif display.shown and action is None and time.monotonic() >= notice_until:
                     for g in gestures:
                         for effect in ui.on_gesture(g, latest, time.monotonic()):
@@ -2999,6 +3046,9 @@ def main():
                         pressed_at = None
 
             now = time.monotonic()
+            if display.view in ('terminal', 'kmscon') and now >= next_bar:
+                display.tty_bar()
+                next_bar = now + 0.25
             if touch and display.shown and action is None:
                 for g in touch.tick(now):
                     for effect in ui.on_gesture(g, latest, now):
