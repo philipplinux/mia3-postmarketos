@@ -1,0 +1,26 @@
+[Unit]
+Description=Mi A3 power-button status display
+After=systemd-udev-trigger.service
+Conflicts=getty@tty8.service
+
+[Service]
+Type=notify
+NotifyAccess=main
+ExecStart=/usr/bin/python3 /usr/local/lib/mia3-display/display.py --timeout 0 --exclusive-power-key
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/sys/class/backlight/5e94000.dsi.0 /sys/kernel/config
+# /etc: chpasswd (SSH page "Set password") rewrites /etc/shadow
+ReadWritePaths=-/etc
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+PrivateTmp=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_NETLINK
+
+[Install]
+WantedBy=multi-user.target

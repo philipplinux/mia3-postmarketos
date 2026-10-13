@@ -1,0 +1,92 @@
+--- sm6125-xiaomi-laurel-sprout.dts
++++ sm6125-xiaomi-laurel-sprout.dts
+@@ -48,6 +48,8 @@
+ 		#size-cells = <0x00>;
+ 
+ 		cpu@0 {
++			qcom,freq-domain = <0x90 0x0>;
++			#cooling-cells = <0x02>;
+ 			device_type = "cpu";
+ 			compatible = "qcom,kryo260";
+ 			reg = <0x00 0x00>;
+@@ -65,6 +67,8 @@
+ 		};
+ 
+ 		cpu@1 {
++			qcom,freq-domain = <0x90 0x0>;
++			#cooling-cells = <0x02>;
+ 			device_type = "cpu";
+ 			compatible = "qcom,kryo260";
+ 			reg = <0x00 0x01>;
+@@ -75,6 +79,8 @@
+ 		};
+ 
+ 		cpu@2 {
++			qcom,freq-domain = <0x90 0x0>;
++			#cooling-cells = <0x02>;
+ 			device_type = "cpu";
+ 			compatible = "qcom,kryo260";
+ 			reg = <0x00 0x02>;
+@@ -85,6 +91,8 @@
+ 		};
+ 
+ 		cpu@3 {
++			qcom,freq-domain = <0x90 0x0>;
++			#cooling-cells = <0x02>;
+ 			device_type = "cpu";
+ 			compatible = "qcom,kryo260";
+ 			reg = <0x00 0x03>;
+@@ -95,6 +103,8 @@
+ 		};
+ 
+ 		cpu@100 {
++			qcom,freq-domain = <0x90 0x1>;
++			#cooling-cells = <0x02>;
+ 			device_type = "cpu";
+ 			compatible = "qcom,kryo260";
+ 			reg = <0x00 0x100>;
+@@ -112,6 +122,8 @@
+ 		};
+ 
+ 		cpu@101 {
++			qcom,freq-domain = <0x90 0x1>;
++			#cooling-cells = <0x02>;
+ 			device_type = "cpu";
+ 			compatible = "qcom,kryo260";
+ 			reg = <0x00 0x101>;
+@@ -122,6 +134,8 @@
+ 		};
+ 
+ 		cpu@102 {
++			qcom,freq-domain = <0x90 0x1>;
++			#cooling-cells = <0x02>;
+ 			device_type = "cpu";
+ 			compatible = "qcom,kryo260";
+ 			reg = <0x00 0x102>;
+@@ -132,6 +146,8 @@
+ 		};
+ 
+ 		cpu@103 {
++			qcom,freq-domain = <0x90 0x1>;
++			#cooling-cells = <0x02>;
+ 			device_type = "cpu";
+ 			compatible = "qcom,kryo260";
+ 			reg = <0x00 0x103>;
+@@ -2289,6 +2305,17 @@
+ 			firmware-name = "laurel";
+ 		};
+ 
++		cpufreq@f521000 {
++			compatible = "qcom,sm6125-cpufreq-hw", "qcom,cpufreq-hw";
++			reg = <0x00 0xf521000 0x00 0x1000>, <0x00 0xf523000 0x00 0x1000>;
++			reg-names = "freq-domain0", "freq-domain1";
++			clocks = <0x13 0x00>, <0x15 0x06>;
++			clock-names = "xo", "alternate";
++			#freq-domain-cells = <0x01>;
++			#clock-cells = <0x01>;
++			phandle = <0x90>;
++		};
++
+ 		mailbox@f111000 {
+ 			compatible = "qcom,sm6125-apcs-hmss-global", "qcom,msm8994-apcs-kpss-global";
+ 			reg = <0x00 0xf111000 0x00 0x1000>;

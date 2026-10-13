@@ -1,0 +1,13 @@
+[Unit]
+Description=Hold battery around 50% (pmi632_chg)
+
+[Service]
+ExecStartPre=/sbin/modprobe pmi632_chg
+ExecStart=/usr/bin/python3 /usr/local/lib/chargectl/chargectl.py
+# stopped or crashed: back to plain charging
+ExecStopPost=/bin/sh -c 'P=/sys/module/pmi632_chg/parameters; echo 0 > $P/usb_suspend; echo 1 > $P/charging_enabled; rm -f /run/chargectl.mode'
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

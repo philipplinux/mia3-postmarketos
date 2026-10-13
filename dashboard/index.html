@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Mi A3 · System dashboard</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%226%22%20fill%3D%22%23153d5a%22%2F%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%2365e0da%22%20stroke-width%3D%222%22%3E%3Cpath%20d%3D%22M23%2012V27H5V9H19%22%2F%3E%3Cpath%20d%3D%22M12%2015L15%2013V23M12%2023H18M25%203V11M21%207H29%22%20stroke-linecap%3D%22square%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E">
+  <style>
+    :root{color-scheme:dark;--bg:#090c11;--panel:#111720;--panel2:#151e29;--line:#263241;--text:#e8eef5;--muted:#91a0b1;--faint:#5f6c7b;--blue:#69b5ff;--cyan:#65e0da;--green:#7ce6a6;--amber:#ffcb70;--red:#ff7d79;--radius:16px}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 12% -12%,#14304a 0,transparent 36%),radial-gradient(ellipse at 100% 0,#102525 0,transparent 30%),var(--bg);color:var(--text);font:14px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh}
+    .wrap{max-width:1180px;margin:auto;padding:30px 22px 42px}.top{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:30px}.brand{display:flex;align-items:center;gap:13px}.mark{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;background:linear-gradient(140deg,#153d5a,#182d3b);border:1px solid #28516b;color:var(--cyan);font-weight:800;letter-spacing:-.08em}.eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}h1{font-size:20px;line-height:1.1;margin:3px 0 0;letter-spacing:-.03em}.topright{display:flex;align-items:center;gap:15px;color:var(--muted);font-size:12px}.live{display:flex;align-items:center;gap:7px}.dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 12px #7ce6a688}.action{border:1px solid var(--line);background:#111923;color:var(--text);border-radius:9px;padding:8px 11px;cursor:pointer;font:inherit}.action:hover{border-color:#52738e;background:#172331}
+    .intro{display:flex;align-items:end;justify-content:space-between;margin:0 2px 15px}.intro h2{font-size:15px;margin:0;font-weight:650;letter-spacing:-.01em}.intro p{margin:4px 0 0;color:var(--muted);font-size:12px}.grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:13px}.card{background:linear-gradient(145deg,#141b24ee,#0f151dee);border:1px solid var(--line);border-radius:var(--radius);padding:17px 18px;min-width:0;box-shadow:0 8px 28px #0002}.metric{grid-column:span 3;min-height:147px}.metric.battery{grid-column:span 3}.label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;font-weight:650}.value-row{display:flex;align-items:baseline;gap:7px;margin-top:17px}.value{font-size:31px;font-weight:700;letter-spacing:-.055em;line-height:1}.unit{color:var(--muted);font-size:13px}.sub{color:var(--muted);font-size:12px;margin-top:9px;min-height:17px}.bar{height:6px;background:#273241;border-radius:8px;margin-top:16px;overflow:hidden}.bar span{display:block;height:100%;width:0;border-radius:inherit;background:linear-gradient(90deg,var(--blue),var(--cyan));transition:width .35s ease}.bar.amber span{background:linear-gradient(90deg,var(--amber),var(--red))}.batteryline{display:flex;align-items:center;gap:11px;margin-top:16px}.batterybox{height:30px;width:55px;border:1.5px solid #74869a;border-radius:7px;padding:3px;position:relative}.batterybox:after{content:"";position:absolute;width:3px;height:10px;border-radius:0 3px 3px 0;background:#74869a;right:-5px;top:9px}.batteryfill{height:100%;width:0;background:var(--green);border-radius:3px;transition:width .35s}.batterypercent{font-size:28px;font-weight:700;letter-spacing:-.05em}.wide{grid-column:span 6}.third{grid-column:span 4}.cardhead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}.cardhead h3{font-size:13px;margin:0;font-weight:650}.chip{font-size:10px;padding:4px 8px;border-radius:999px;background:#1a2830;color:var(--cyan);border:1px solid #29434b;white-space:nowrap}.muted{color:var(--muted)}.netmain{display:flex;align-items:center;gap:16px;margin:8px 0 16px}.signal{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;background:#18252e;border:1px solid #29424b;color:var(--cyan);font-size:15px;font-weight:700}.ssid{font-size:20px;font-weight:680;letter-spacing:-.035em;overflow-wrap:anywhere}.details{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding-top:13px;border-top:1px solid var(--line)}.detail span{display:block}.detail .k{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.1em}.detail .v{font-size:12px;margin-top:4px;overflow-wrap:anywhere}.rows{display:flex;flex-direction:column;gap:9px}.row{display:grid;grid-template-columns:minmax(0,1fr) 48px 7ch 10ch;align-items:center;gap:12px;font-size:12px}.rowname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d7e0e9}.smallbar{height:5px;min-width:46px;border-radius:9px;background:#26313e;overflow:hidden}.smallbar i{display:block;height:100%;background:var(--blue);border-radius:9px}.rowval{font-variant-numeric:tabular-nums;text-align:right;color:var(--muted);white-space:nowrap}.rowheader{font-size:11px;color:var(--faint);padding-bottom:8px;border-bottom:1px solid var(--line);margin-bottom:9px}.empty{padding:16px 0;color:var(--muted);font-size:12px}.containers{display:flex;flex-direction:column;gap:8px}.container{display:grid;grid-template-columns:8px minmax(0,1fr) auto;align-items:center;gap:9px;border:1px solid #222e3b;background:#101720;border-radius:10px;padding:9px 10px}.state-dot{height:7px;width:7px;border-radius:50%;background:var(--green)}.container-name{font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.container-meta{font-size:10px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.container-state{font-size:10px;color:var(--muted);text-align:right;max-width:110px}.footer{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin-top:15px}.footer a,.footer button{font-size:11px;text-decoration:none;color:#aebdca;border:1px solid var(--line);background:#101720;border-radius:9px;padding:8px 10px}.footer a:hover,.footer button:hover{color:white;border-color:#52738e}.footer .hint{color:var(--faint);font-size:11px;margin-left:auto}.error{color:var(--amber)!important}.act-btn{font:inherit;font-size:10px;color:#e8eef5;background:#1a2430;border:1px solid #3a4a5c;border-radius:7px;padding:3px 7px;cursor:pointer}.act-btn:hover:not(:disabled){border-color:var(--amber);color:var(--amber)}.act-btn:disabled{opacity:.35;cursor:not-allowed}.act-btn.danger{color:var(--red);border-color:var(--red)}.row.proc{grid-template-columns:minmax(0,1fr) 48px 7ch 10ch 58px}.cbtns{display:flex;gap:4px;justify-content:flex-end;margin-top:4px}.sr{position:absolute;left:-9999px}
+    @media(max-width:900px){.metric,.metric.battery{grid-column:span 4}.wide{grid-column:span 12}.third{grid-column:span 6}}
+    @media(max-width:600px){.wrap{padding:20px 13px 30px}.top{align-items:flex-start;margin-bottom:24px}.top{flex-wrap:wrap}.topright{gap:9px;width:100%;justify-content:space-between}.topright .last{display:none}.topright .action{padding:7px 8px}.metric,.metric.battery{grid-column:span 6;min-height:135px;padding:15px}.metric .value{font-size:27px}.wide,.third{grid-column:span 12}.details{gap:6px}.row{grid-template-columns:minmax(0,1fr) 48px 7ch 10ch;gap:8px}.footer .hint{width:100%;margin:0}.intro{align-items:flex-start;flex-direction:column;gap:3px}}
+  </style>
+<!-- Mi A3 phone view -->
+<script>if(location.hash === '#phone')document.documentElement.classList.add('phone');</script>
+<style>/* Activated by #phone. Physical panel: 1080 x 1920, portrait. */
+html.phone body{background:#090c11}
+html.phone .wrap{max-width:540px;padding:18px 16px;font-size:14px}
+html.phone .top{margin-bottom:16px;flex-wrap:nowrap;align-items:center}
+html.phone .topright{width:auto;justify-content:flex-end}
+html.phone .topright .last,html.phone .action,html.phone .footer,html.phone .intro,html.phone .eyebrow,html.phone #wifi-state,html.phone #uptime-sub,html.phone #gpu-usage{display:none}
+html.phone .grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+html.phone .card{padding:13px 14px;border-radius:12px;box-shadow:none}
+html.phone .metric{grid-column:span 1;min-height:115px}
+html.phone .wide,html.phone .third{grid-column:span 2}
+html.phone .value{font-size:28px}
+html.phone .value-row{margin-top:12px}
+html.phone .sub{font-size:11px;min-height:0}
+html.phone .bar{margin-top:10px}
+html.phone .cardhead{margin-bottom:9px}
+html.phone .netmain{margin:0 0 9px}
+html.phone .ssid{font-size:18px}
+html.phone .details{padding-top:9px}
+html.phone #battery-uptime-card>div:nth-child(2){gap:12px!important;margin-bottom:12px!important}
+html.phone .batteryline{margin-top:12px}
+html.phone .container:nth-child(n+3){display:none}
+html.phone .container-meta{display:none}
+html.phone #copy-ssh-card,html.phone #process-card{display:none}
+html.phone .topright .live{font-size:11px}
+html.phone #battery-uptime-card{order:0}
+html.phone #wifi-card{order:1}
+html.phone #services-card{order:2;padding:10px 14px;font-size:12px}
+html.phone #cpu-card,html.phone #memory-card{order:3}
+html.phone #process-card{display:block;order:4}
+html.phone #storage-card,html.phone #gpu-clock-card{order:5}
+html.phone .third{order:6}
+html.phone #process-summary{display:none}
+html.phone #wifi-card{padding:10px 14px}
+html.phone #wifi-card .cardhead,html.phone #wifi-card .details .detail:first-child{display:none}
+html.phone #wifi-card .netmain{display:inline-flex;width:45%;margin:0;gap:9px;vertical-align:middle}
+html.phone #wifi-card .signal{width:34px;height:34px;border-radius:9px;font-size:11px;flex-shrink:0}
+html.phone #wifi-card .ssid{font-size:14px;max-width:155px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+html.phone #wifi-card .details{display:inline-grid;width:55%;grid-template-columns:1fr 1fr;padding:0;border:0;vertical-align:middle}
+html.phone #wifi-card .detail .v{font-size:10px}
+html.phone #process-card .row{grid-template-columns:minmax(0,1fr) 40px 6ch 9ch;gap:8px;font-size:11px}
+html.phone #process-card .rowheader{margin-bottom:7px;padding-bottom:5px}
+html.phone #process-card .rows{gap:7px}
+html.phone #gpu-clock{font-size:24px}
+</style>
+</head>
+<body>
+  <main class="wrap">
+    <header class="top">
+      <div class="brand"><div class="mark" aria-label="Xiaomi"><svg width="28" height="28" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M23 12V27H5V9H19" stroke="currentColor" stroke-width="2"/><path d="M12 15L15 13V23M12 23H18M25 3V11M21 7H29" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg></div><div><div class="eyebrow">Phone system</div><h1>Mi A3 dashboard</h1></div></div>
+      <div class="topright"><span class="live"><i class="dot" id="dot"></i><span id="connection">Connecting</span></span><span class="last" id="updated">—</span><select class="action" id="refresh-interval" aria-label="Refresh interval"><option value="2">2 sec</option><option value="5">5 sec</option><option value="10">10 sec</option><option value="30" selected>30 sec</option><option value="60">60 sec</option></select><button class="action" id="refresh">Refresh</button></div>
+    </header>
+    <div class="intro"><div><h2>Device overview</h2><p>Live health and activity from the phone</p></div></div>
+    <section class="grid">
+      <article class="card wide" id="battery-uptime-card">
+        <div class="cardhead"><h3>Battery &amp; uptime</h3><span class="chip" id="battery-chip">—</span></div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin-bottom:18px">
+          <div><div class="label">Battery</div><div class="batteryline"><div class="batterybox"><div class="batteryfill" id="battery-fill"></div></div><div class="batterypercent" id="battery">—</div><span class="unit">%</span></div><div class="sub" id="battery-sub">Waiting for device</div></div>
+          <div><div class="label">Uptime</div><div class="value-row"><span class="value" id="uptime">—</span></div><div class="sub" id="uptime-sub">Since last boot</div></div>
+        </div>
+        <div class="sub" id="thermal-line" style="margin:0 0 12px"></div><div class="details"><div class="detail"><span class="k">Temperature</span><span class="v" id="battery-temp">—</span></div><div class="detail"><span class="k">Voltage</span><span class="v" id="battery-voltage">—</span></div><div class="detail"><span class="k">Current</span><span class="v" id="battery-current">—</span></div></div>
+      </article>
+      <article class="card metric"><div class="label">CPU · whole device</div><div class="value-row"><span class="value" id="cpu">—</span><span class="unit">%</span></div><div class="bar"><span id="cpu-bar"></span></div><div class="sub" id="cpu-sub">Waiting for a second sample</div></article>
+      <article class="card metric"><div class="label">Memory</div><div class="value-row"><span class="value" id="memory">—</span><span class="unit">GiB</span></div><div class="bar"><span id="memory-bar"></span></div><div class="sub" id="memory-sub">—</div></article>
+      <article class="card wide"><div class="cardhead"><h3>Wi-Fi</h3><span class="chip" id="wifi-chip">Checking</span></div><div class="netmain"><div class="signal" id="wifi-signal">—</div><div><div class="ssid" id="wifi-ssid">—</div><div class="muted" id="wifi-state" style="font-size:12px;margin-top:3px">—</div></div></div><div class="details"><div class="detail"><span class="k">Interface</span><span class="v" id="wifi-if">—</span></div><div class="detail"><span class="k">Address</span><span class="v" id="wifi-ip">—</span></div><div class="detail"><span class="k">Link rate</span><span class="v" id="wifi-rate">—</span></div></div></article>
+      <article class="card metric"><div class="label">Storage · root</div><div class="value-row"><span class="value" id="storage">—</span><span class="unit">GiB used</span></div><div class="bar"><span id="storage-bar"></span></div><div class="sub" id="storage-sub">—</div></article>
+      <article class="card metric"><div class="label" id="gpu-label">GPU</div><div class="value-row"><span class="value" id="gpu-clock">—</span><span class="unit"></span></div><div class="bar"><span id="gpu-bar"></span></div><div class="sub" id="gpu-state">Waiting for device</div><div class="sub" id="gpu-usage">Utilization unavailable</div></article>
+      <article class="card wide"><div class="cardhead"><h3>Processes</h3><div style="display:flex;gap:8px"><select class="action" id="process-sort" aria-label="Sort processes"><option value="cpu">Top CPU</option><option value="ram">Top RAM</option></select><select class="action" id="process-limit" aria-label="Number of processes"><option value="10" selected>10 rows</option><option value="20">20 rows</option><option value="50">50 rows</option><option value="all">All rows</option></select></div></div><input class="action" id="process-filter" type="search" placeholder="Filter by process name or PID…" aria-label="Filter processes by name or PID" style="width:100%;margin-bottom:10px"><div class="sub" id="process-summary" style="margin:0 0 12px">Top 10 · CPU per core · resident RAM</div><div class="row proc rowheader" aria-hidden="true"><span>Process · PID · user</span><span></span><span style="text-align:right">CPU</span><span style="text-align:right">RAM</span><span></span></div><div class="rows" id="processes"><div class="empty">Loading process list…</div></div></article>
+      <article class="card third"><div class="cardhead"><h3>Docker containers</h3><span class="chip" id="docker-chip">Checking</span></div><div class="containers" id="containers"><div class="empty">Loading containers…</div></div></article>
+      <article class="card third"><div class="cardhead"><h3>Device access</h3></div><div class="access-status" style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px"><span class="chip" id="ssh-status">SSH Unknown</span><span class="chip" id="tailscale-status">Tailscale Unknown</span><span class="chip" id="usb-status">USB Unknown</span></div><div class="muted" style="font-size:12px">Open a terminal with the saved Mi A3 connection.</div><div style="margin-top:13px"><button class="action" id="copy-ssh">Copy <code>ssh mia3</code></button></div><div class="sub" id="copy-status">The shell opens in your terminal.</div></article>
+    </section>
+    <nav class="footer" aria-label="More Mi A3 tools"><span class="hint" id="poll-hint">Refreshes every 30 seconds while this tab is open</span></nav>
+  </main>
+<script>if (document.documentElement.classList.contains('phone')) {
+  document.getElementById('copy-ssh').closest('article').id = 'copy-ssh-card';
+  document.getElementById('processes').closest('article').id = 'process-card';
+  document.querySelectorAll('a, button, select, input').forEach(el => {
+    el.disabled = true;
+    el.tabIndex = -1;
+  });
+  // Fixed polling; the display needs no controls or navigation.
+  const refresh = document.getElementById('refresh-interval');
+  refresh.add(new Option('1 second', '1'));
+  refresh.value = '1';
+  for (const id of ['cpu', 'memory', 'storage', 'gpu-clock']) {
+    document.getElementById(id).closest('article').id = id + '-card';
+  }
+  const card = document.createElement('article');
+  card.className = 'card wide';
+  card.id = 'services-card';
+  const label = document.createElement('span');
+  label.textContent = 'SSH — · Tailscale — · USB —';
+  card.append(label);
+  document.querySelector('.grid').append(card);
+  window.updatePhoneServices = services => {
+    const state = item => item?.up === true ? 'Up' : item?.up === false ? 'Down' : 'Unknown';
+    label.textContent = `SSH ${state(services.ssh)} · Tailscale ${state(services.tailscale)} · USB ${state(services.usb)}`;
+  };
+}
+if (document.documentElement.classList.contains('phone')) {
+  document.getElementById('wifi-ssid').closest('article').id = 'wifi-card';
+  const limit = document.getElementById('process-limit');
+  limit.add(new Option('5 rows', '5'));
+  limit.value = '5';
+}
+</script>
+  <script>
+    const $=id=>document.getElementById(id), dashFmt={
+      bytes(n){if(n==null)return '—';const u=['B','KiB','MiB','GiB','TiB'];let i=0,v=n;while(v>=1024&&i<u.length-1){v/=1024;i++}return `${v.toFixed(i?1:0)} ${u[i]}`},
+      uptime(s){if(s==null)return '—';s=Math.floor(s);const d=Math.floor(s/86400);s%=86400;const h=Math.floor(s/3600);s%=3600;const m=Math.floor(s/60);return d?`${d}d ${h}h`:`${h}h ${m}m`},
+      num(n,d=0){return n==null?'—':Number(n).toFixed(d)}
+    };
+    function text(id,value){$(id).textContent=value==null?'—':value}
+    function bar(id,value){$(id).style.width=`${Math.max(0,Math.min(100,Number(value)||0))}%`}
+    const termed={};
+    async function post(path,body){try{const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return await r.json()}catch(e){return{ok:false,message:String(e)}}}
+    function note(m){text('poll-hint',m)}
+    async function killProc(p,force){
+      if(!confirm(force?`Still running. Force kill (SIGKILL) ${p.name} (${p.pid})? Unsaved data is lost.`:`Terminate ${p.name} (${p.pid}) with SIGTERM?`))return;
+      const r=await post('/api/process/kill',{pid:p.pid,start:p.start,signal:force?'KILL':'TERM'});note(r.message);if(r.ok&&!force)termed[p.pid]={start:p.start,at:Date.now()};refresh(true)}
+    async function dockerAct(c,act){if(!confirm(`${act[0].toUpperCase()+act.slice(1)} container ${c.name}?`))return;const r=await post('/api/docker/'+act,{name:c.name});note(r.message);refresh(true)}
+    function setRows(container,items){container.replaceChildren();if(!items.length){const empty=document.createElement('div');empty.className='empty';empty.textContent=$('process-filter').value.trim()?'No matching processes':'No process data available';container.append(empty);return}
+      for(const item of items){
+        const row=document.createElement('div');row.className='row';
+        const name=document.createElement('span');name.className='rowname';name.textContent=`${item.name} · ${item.pid} · ${item.user||'?'}`;name.title=`${item.user||'?'} · ${item.cmd||item.name}`;
+        const cpu=document.createElement('span');cpu.className='rowval process-cpu';cpu.textContent=item.cpu_percent==null?'—':`${dashFmt.num(item.cpu_percent,1)}%`;cpu.title='CPU · one core = 100%';
+        const ram=document.createElement('span');ram.className='rowval process-ram';ram.textContent=dashFmt.bytes(item.rss_bytes);ram.title=`Resident RAM · ${dashFmt.num(item.memory_percent,1)}% of system RAM`;
+        const track=document.createElement('span');track.className='smallbar';track.setAttribute('aria-hidden','true');const fill=document.createElement('i');fill.style.width=`${Math.max(0,Math.min(100,Number(item.cpu_percent)||0))}%`;track.append(fill);
+        row.className='row proc';const kb=document.createElement('button');kb.className='act-btn';const t0=termed[item.pid];const force=t0&&t0.start===item.start&&Date.now()-t0.at>=5000;kb.textContent=force?'SIGKILL':'Kill';if(force)kb.classList.add('danger');kb.disabled=!item.killable;kb.title=item.killable?'':'not your process (or protected)';kb.addEventListener('click',()=>killProc(item,force));row.append(name,track,cpu,ram,kb);container.append(row);
+      }
+    }
+    function setContainers(data){const list=$('containers');list.replaceChildren();if(!data.available){$('docker-chip').textContent='Unavailable';const msg=document.createElement('div');msg.className='empty';msg.textContent='Docker status is unavailable';list.append(msg);return}
+      const items=data.containers||[];const running=items.filter(item=>(item.state||'').toLowerCase()==='running').length;$('docker-chip').textContent=`${running} running · ${items.length} total`;if(!items.length){const msg=document.createElement('div');msg.className='empty';msg.textContent='No containers';list.append(msg);return}
+      for(const item of items){const row=document.createElement('div');row.className='container';const dot=document.createElement('i');dot.className='state-dot';dot.style.background=(item.state||'').toLowerCase()==='running'?'var(--green)':'var(--amber)';const main=document.createElement('div');main.style.minWidth='0';const name=document.createElement('div');name.className='container-name';name.textContent=item.name||'Unnamed';const meta=document.createElement('div');meta.className='container-meta';meta.textContent=[item.image,item.ports].filter(Boolean).join(' · ');main.append(name,meta);const status=document.createElement('span');status.className='container-state';status.textContent=item.status||item.state||'—';row.append(dot,main,status);const st=(item.state||'').toLowerCase();const acts=st==='running'?['pause','stop']:st==='paused'?['unpause']:['start'];const bt=document.createElement('div');bt.className='cbtns';bt.style.gridColumn='2 / 4';for(const a of acts){const b=document.createElement('button');b.className='act-btn';b.textContent=a[0].toUpperCase()+a.slice(1);b.addEventListener('click',()=>dockerAct(item,a));bt.append(b)}row.append(bt);list.append(row)}
+    }
+    let latestProcesses=[];
+    function renderProcesses(){
+      const key=$('process-sort').value==='ram'?'rss_bytes':'cpu_percent';
+      const query=$('process-filter').value.trim().toLowerCase();
+      const matches=latestProcesses.filter(item=>!query||`${item.name||''} ${item.pid}`.toLowerCase().includes(query));
+      const limit=$('process-limit').value==='all'?matches.length:Number($('process-limit').value);
+      const rows=[...matches].sort((a,b)=>(b[key]||0)-(a[key]||0)||a.pid-b.pid).slice(0,limit);
+      setRows($('processes'),rows);
+      text('process-summary',`${rows.length} of ${matches.length}${query?' matching':''} processes · CPU per core · resident RAM`);
+    }
+    $('process-sort').addEventListener('change',renderProcesses);
+    $('process-limit').addEventListener('change',renderProcesses);
+    $('process-filter').addEventListener('input',renderProcesses);
+    function render(d){
+      const th=d.thermal||{};const tl=document.getElementById('thermal-line');if(tl){tl.textContent=th.sensor?`Thermal: ${th.sensor.replace(/^iio:/,'')} ${dashFmt.num(th.temp_c,1)} °C${th.over?` · ${th.over} over limit`:''} · ${th.last_event||'no thermal events'}${th.charge_mode?` · charge: ${th.charge_mode}`:''}`:'';tl.classList.toggle('error',th.over>0)}const b=d.battery||{};text('battery',b.percent);bar('battery-fill',b.percent);text('battery-sub',b.status?`${b.status}${b.name?` · ${b.name}`:''}`:'Battery data unavailable');text('battery-chip',b.present===false?'Not present':b.available?'Battery online':'Unavailable');text('battery-temp',b.temperature_c==null?'—':`${dashFmt.num(b.temperature_c,1)} °C`);text('battery-voltage',b.voltage_v==null?'—':`${dashFmt.num(b.voltage_v,3)} V`);text('battery-current',b.current_ma==null?'—':`${dashFmt.num(b.current_ma,1)} mA`);
+      const cpu=d.cpu||{};text('cpu',cpu.percent);bar('cpu-bar',cpu.percent);text('cpu-sub',cpu.percent==null?'Waiting for a second sample':`${cpu.logical_cores||'—'} logical cores`);
+      const gpu=d.gpu||{};text('gpu-label',gpu.model||'GPU');text('gpu-clock',!gpu.available?'Unavailable':gpu.utilization_percent==null?'n/a':gpu.utilization_percent);$('gpu-clock').nextElementSibling.textContent=gpu.utilization_percent==null?'':'%';bar('gpu-bar',gpu.utilization_percent);text('gpu-state',gpu.available?'No load counter on this kernel':'Telemetry unavailable');text('gpu-usage','');
+      const m=d.memory||{};text('memory',m.used_bytes==null?'—':(m.used_bytes/1073741824).toFixed(2));bar('memory-bar',m.used_percent);text('memory-sub',m.used_bytes==null?'Memory data unavailable':`${dashFmt.bytes(m.used_bytes)} used of ${dashFmt.bytes(m.total_bytes)} · ${dashFmt.num(m.used_percent,1)}%`);
+      const s=d.storage||{};text('storage',s.used_bytes==null?'—':(s.used_bytes/1073741824).toFixed(1));bar('storage-bar',s.used_percent);text('storage-sub',s.used_bytes==null?'Storage data unavailable':`${dashFmt.bytes(s.free_bytes)} free of ${dashFmt.bytes(s.total_bytes)} · ${dashFmt.num(s.used_percent,1)}%`);
+      text('uptime',dashFmt.uptime(d.uptime_seconds));if(d.uptime_seconds!=null)text('uptime-sub',`${Math.floor(d.uptime_seconds/86400)} days since boot`);
+      const w=d.wifi||{};text('wifi-chip',w.connected===true?'Connected':w.connected===false?(w.available?'No connection':'Unavailable'):'Link details');text('wifi-ssid',w.ssid||(w.connected===false?'No active Wi-Fi':'Network details unavailable'));text('wifi-state',w.connected===true?'Connected to wireless network':w.connected===false?(w.available?'NetworkManager is ready':'Wi-Fi details unavailable'):'Link quality available · network details unavailable');text('wifi-signal',w.signal_percent==null?(w.signal_dbm==null?'—':`${dashFmt.num(w.signal_dbm)} dBm`):`${w.signal_percent}%`);text('wifi-if',w.interface);text('wifi-ip',w.ip_address);text('wifi-rate',w.rate_mbps||'—');
+      window.updatePhoneServices?.(d.services||{});for(const [key,label] of [['ssh','SSH'],['tailscale','Tailscale'],['usb','USB']]){const up=d.services?.[key]?.up;text(key+'-status',`${label} ${up===true?'Up':up===false?'Down':'Unknown'}`);}latestProcesses=d.processes||[];renderProcesses();setContainers(d.containers||{});
+      const time=d.collected_at?new Date(d.collected_at).toLocaleTimeString():new Date().toLocaleTimeString();text('updated',`Updated ${time}`);$('connection').textContent='Live';$('dot').style.background='var(--green)';$('dot').style.boxShadow='0 0 12px #7ce6a688';
+    }
+    let inFlight=false;async function refresh(force=false){if(document.hidden&&!force)return;if(inFlight)return;inFlight=true;$('connection').textContent='Refreshing';try{const response=await fetch('/api/status',{cache:'no-store'});if(!response.ok)throw new Error(`HTTP ${response.status}`);render(await response.json())}catch(error){$('connection').textContent='Offline';$('dot').style.background='var(--red)';$('dot').style.boxShadow='0 0 12px #ff7d7988';if(!$('updated').textContent||$('updated').textContent==='—')text('updated',error.message)}finally{inFlight=false}}
+    $('refresh').addEventListener('click',()=>refresh(true));document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh(true);else $('connection').textContent='Paused'});$('copy-ssh').addEventListener('click',async()=>{try{await navigator.clipboard.writeText('ssh mia3');text('copy-status','Copied. Paste into your terminal.')}catch(_){text('copy-status','Copy ssh mia3 from the button label into your terminal.')}});refresh(true);
+    let refreshTimer;function scheduleRefresh(){const seconds=Number($('refresh-interval').value);clearInterval(refreshTimer);refreshTimer=setInterval(()=>refresh(),seconds*1000);text('poll-hint',`Refreshes every ${seconds} seconds while this tab is open`);}
+    $('refresh-interval').addEventListener('change',()=>{scheduleRefresh();refresh(true);});scheduleRefresh();
+  </script>
+</body>
+</html>

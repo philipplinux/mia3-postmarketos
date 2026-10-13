@@ -1,0 +1,13 @@
+[Unit]
+Description=Mi A3 read-only system dashboard
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/projects/mia3-dashboard/dashboard
+ExecStart=/usr/bin/python3 /home/philipp/projects/mia3-dashboard/dashboard/server.py --port 8090
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
