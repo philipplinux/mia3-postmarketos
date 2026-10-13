@@ -13,6 +13,7 @@ import os
 import pwd
 from pathlib import Path
 import select
+import shutil
 import signal
 import socket
 import re
@@ -43,9 +44,6 @@ GREEN = '#7ce6a6'
 AMBER = '#ffcb70'
 FONT = Path('/usr/share/fonts/opensans')
 FONTS = {}
-R = 4 / 3  # px per layout unit
-K = 1.2  # vertical stretch: lays the 540x960 design out on the taller 720x1560 panel
-F = 1.1  # font scale
 
 HOLD_ACTION_S = 3.0
 SAMPLE_S = 1.0
@@ -61,10 +59,14 @@ PROTECTED_COMMS = frozenset({
 EVIOCGKEY_96 = 0x80604518
 
 
-def font(size, bold=False, mono=False):
-    key = (size, bold, mono)
+ICON_FONT = Path('/usr/share/fonts/nerd-fonts/SymbolsNerdFont-Regular.ttf')   # apk add font-nerd-fonts-symbols
+
+
+def font(size, bold=False, mono=False, icon=False):
+    key = (size, bold, mono, icon)
     if key not in FONTS:
-        path = '/usr/share/fonts/droid/DroidSansMono.ttf' if mono else FONT / ('OpenSans-Bold.ttf' if bold else 'OpenSans-Regular.ttf')
+        path = ICON_FONT if icon else '/usr/share/fonts/droid/DroidSansMono.ttf' if mono else \
+            FONT / ('OpenSans-Bold.ttf' if bold else 'OpenSans-Regular.ttf')
         FONTS[key] = ImageFont.truetype(str(path), size)
     return FONTS[key]
 
@@ -77,114 +79,94 @@ def gib(value):
     return '—' if value is None else f'{value / 2**30:.1f} GiB'
 
 
+def uptime_text(up):
+    return '—' if up is None else f'{int(up) // 86400}d {int(up) % 86400 // 3600}h' if up >= 86400 else \
+        f'{int(up) // 3600}h {int(up) % 3600 // 60}m'
+
+
+OV_BATT, OV_NET = (30, 160, 1050, 500), (30, 1190, 1050, 1560)
+OV_CONT, OV_PROC = (30, 1590, 525, 2160), (555, 1590, 1050, 2160)
+
+
 def render(data, stale=False):
+    """Overview: battery, 2x2 gauges, connectivity, then container/process summaries (tap a card for its tab)."""
     image = Image.new('RGB', IMG, BG)
-    d = ImageDraw.Draw(image)
-
-    def text(x, y, value, size=13, color=TEXT, bold=False, max_width=None):
-        value = str(value if value is not None else '—')
-        f = font(round(size * R * F), bold)
-        if max_width:
-            while len(value) > 1 and d.textlength(value, font=f) > max_width * R:
-                value = value[:-2] + '…'
-        d.text((x * R, y * R * K), value, fill=color, font=f)
-
-    def card(x, y, w, h):
-        d.rounded_rectangle((x*R, y*R*K, (x+w)*R, (y+h)*R*K), 16, fill=PANEL, outline=LINE, width=1)
-
-    def bar(x, y, w, percent):
-        d.rounded_rectangle((x*R, y*R*K, (x+w)*R, (y+5)*R*K), 4, fill=LINE)
-        if percent is not None and percent > 0:
-            d.rounded_rectangle((x*R, y*R*K, (x+w*min(100,max(0,percent))/100)*R, (y+5)*R*K), 4, fill=CYAN)
-
-    text(20, 15, 'Mi A3 dashboard', 24, bold=True)
-    stamp = data.get('collected_at')
+    d, text, card, bar = tools(image)
+    header(image, 'Mi A3', stale)
     try:
-        stamp = dt.datetime.fromisoformat(stamp).astimezone().strftime('%H:%M:%S')
+        stamp = dt.datetime.fromisoformat(data.get('collected_at')).astimezone().strftime('%H:%M:%S')
     except (TypeError, ValueError):
-        stamp = stamp or 'waiting'
-    text(345, 26, stamp, 11, MUTED)
-    text(441, 24, 'Offline' if stale else 'Live', 13, AMBER if stale else GREEN)
-    battery = data.get('battery', {})
-    uptime = data.get('uptime_seconds')
-    card(16, 64, 508, 179)
-    text(30, 77, 'Battery & uptime', 15, bold=True)
-    text(30, 110, fmt(battery.get('percent'), suffix='%'), 32, bold=True)
-    if uptime is None:
-        up = '—'
-    else:
-        minutes = int(uptime)//60
-        days, remainder = divmod(minutes, 1440)
-        hours, mins = divmod(remainder, 60)
-        up = f'{days}d {hours}h' if days else f'{hours}h {mins}m'
-    text(291, 110, up, 30, bold=True)
-    text(30, 156, battery.get('status') or 'No battery gauge', 12, MUTED)
-    text(291, 156, 'Since boot', 12, MUTED)
-    d.line((60, 368*K, 1020, 368*K), fill=LINE, width=1)
-    for x, label, value in [(30, 'Temperature', fmt(battery.get('temperature_c'),1,' °C')),
-                             (201, 'Voltage', fmt(battery.get('voltage_v'),3,' V')),
-                             (365, 'Current', fmt(battery.get('current_ma'),0,' mA'))]:
-        text(x, 191, label, 10, MUTED)
-        text(x, 208, value, 14)
+        stamp = 'waiting'
+    text(900, 50, stamp, 34, MUTED, anchor='ra')
 
-    cpu, memory = data.get('cpu', {}), data.get('memory', {})
-    storage, gpu = data.get('storage', {}), data.get('gpu', {})
-    state = gpu.get('power_state')
+    b, th = data.get('battery') or {}, data.get('thermal') or {}
+    x0, y0, x1, y1 = OV_BATT
+    card(x0, y0, x1 - x0, y1 - y0)
+    text(60, 175, fmt(b.get('percent'), suffix='%'), 130, bold=True)
+    text(60, 350, b.get('status') or 'No battery gauge', 36, MUTED, max_width=560)
+    bar(60, 420, 560, b.get('percent'), h=24, color=GREEN)
+    temp = th.get('temp_c') if th.get('temp_c') is not None else b.get('temperature_c')
+    for i, (label, value) in enumerate((('Uptime', uptime_text(data.get('uptime_seconds'))),
+                                        ('Temperature', fmt(temp, 1, ' °C')))):
+        text(700, 195 + i * 150, label, 30, MUTED)
+        text(700, 235 + i * 150, value, 52, AMBER if label == 'Temperature' and th.get('over') else TEXT, bold=True)
+
+    cpu, mem, st, gpu = (data.get(k) or {} for k in ('cpu', 'memory', 'storage', 'gpu'))
     load = gpu.get('utilization_percent')
-    gpu_value = 'Unavailable' if not gpu.get('available') else 'Sleeping' if state == 'suspended' else fmt(load,0,'%') if load is not None else 'n/a'
-    metrics = [(16, 367, 'CPU · whole device', fmt(cpu.get('percent'),1,'%'), f"{cpu.get('logical_cores', '—')} logical cores", cpu.get('percent')),
-               (275, 367, 'Memory', gib(memory.get('used_bytes')), f"of {gib(memory.get('total_bytes'))}", memory.get('used_percent')),
-               (16, 680, 'Storage', gib(storage.get('used_bytes')), f"{gib(storage.get('free_bytes'))} free" + sd_free(), storage.get('used_percent')),
-               (275, 680, gpu.get('model') or 'GPU', gpu_value, 'GPU load' if load is not None else 'No load counter', load)]
-    for x,y,label,value,sub,percent in metrics:
-        card(x,y,249,112)
-        text(x+14,y+12,label,11,MUTED)
-        text(x+14,y+33,value,25,bold=True,max_width=221)
-        bar(x+14,y+77,221,percent)
-        text(x+14,y+87,sub,11,MUTED,max_width=221)
+    gpu_value = 'Off' if not gpu.get('available') else 'Asleep' if gpu.get('power_state') == 'suspended' \
+        else fmt(load, 0, '%') if load is not None else 'n/a'
+    tiles = (('CPU', fmt(cpu.get('percent'), 0, '%'), f"{cpu.get('logical_cores', '—')} cores", cpu.get('percent')),
+             ('Memory', gib(mem.get('used_bytes')), f"of {gib(mem.get('total_bytes'))}", mem.get('used_percent')),
+             ('Storage', gib(st.get('used_bytes')), f"{gib(st.get('free_bytes'))} free" + sd_free(), st.get('used_percent')),
+             (gpu.get('model') or 'GPU', gpu_value, 'GPU load', load))
+    for i, (label, value, sub, pct) in enumerate(tiles):
+        x, y = 30 + i % 2 * 525, 530 + i // 2 * 330
+        card(x, y, 495, 300)
+        text(x + 30, y + 25, label, 34, MUTED, max_width=435)
+        text(x + 30, y + 70, value, 72, bold=True, max_width=435)
+        bar(x + 30, y + 190, 435, pct)
+        text(x + 30, y + 230, sub, 30, MUTED, max_width=435)
 
-    wifi = data.get('wifi', {})
-    card(16,253,508,47)
-    text(30,260,wifi.get('ssid') or ('Disconnected' if wifi.get('connected') is False else 'Wi-Fi unknown'),13,bold=True,max_width=180)
-    text(220,260,wifi.get('ip_address'),12,MUTED,max_width=165)
-    text(428,260,fmt(wifi.get('signal_percent'),suffix='%'),12,CYAN)
-    text(30,279,'Wi-Fi',9,MUTED)
-    text(220,279,wifi.get('rate_mbps'),9,MUTED,max_width=260)
+    wifi, services = data.get('wifi') or {}, data.get('services') or {}
+    x0, y0, x1, y1 = OV_NET
+    card(x0, y0, x1 - x0, y1 - y0)
+    text(60, 1215, 'Wi-Fi', 30, MUTED)
+    text(60, 1255, wifi.get('ssid') or ('Disconnected' if wifi.get('connected') is False else 'unknown'), 56,
+         bold=True, max_width=700)
+    text(60, 1340, wifi.get('ip_address'), 38, MUTED, max_width=700)
+    text(1020, 1230, fmt(wifi.get('signal_percent'), suffix='%'), 64, CYAN, bold=True, anchor='ra')
+    text(1020, 1325, f"{wifi.get('rate_mbps') or ''}", 30, MUTED, anchor='ra', max_width=260)
+    for i, (key, label) in enumerate((('ssh', 'SSH'), ('tailscale', 'Tailscale'), ('bluetooth', 'Bluetooth'),
+                                      ('usb', 'USB'))):
+        up = (services.get(key) or {}).get('up')
+        color = GREEN if up is True else AMBER if up is False else MUTED
+        x = 60 + i * 245
+        card(x, 1430, 225, 100, fill=BG, outline=color)
+        text(x + 112, 1480, label, 34, color, bold=True, anchor='mm')
 
-    card(16,310,508,47)
-    services = data.get('services', {})
-    for x,label,key in [(30,'SSH','ssh'), (190,'Tailscale','tailscale'),
-                        (390,'USB','usb')]:
-        up = services.get(key, {}).get('up')
-        status = 'Up' if up is True else 'Down' if up is False else 'Unknown'
-        text(x,322,f'{label}  {status}',13,GREEN if up is True else AMBER if up is False else MUTED,bold=True)
+    cs = data.get('containers') or {}
+    items = cs.get('containers') or []
+    x0, y0, x1, y1 = OV_CONT
+    card(x0, y0, x1 - x0, y1 - y0)
+    text(60, 1615, 'Containers', 34, MUTED)
+    text(60, 1660, f"{sum(c.get('state') == 'running' for c in items)}/{len(items)}" if cs.get('available') else '—',
+         72, bold=True)
+    text(60, 1760, 'running' if cs.get('available') else 'Docker unavailable', 30, MUTED)
+    for i, c in enumerate(sorted(items, key=lambda c: c.get('state') != 'running')[:4]):
+        y = 1840 + i * 75
+        d.ellipse((70 * P, (y + 14) * P, 92 * P, (y + 36) * P), fill=GREEN if c.get('state') == 'running' else AMBER)
+        text(110, y, c.get('name') or '?', 34, max_width=390)
 
-    card(16,489,508,181)
-    text(30,501,'Top processes',14,bold=True)
-    text(382,503,'CPU',11,MUTED)
-    text(467,503,'RAM',11,MUTED)
-    processes = sorted(data.get('processes', []), key=lambda p:(p.get('cpu_percent') or 0,p.get('rss_bytes') or 0), reverse=True)[:5]
-    if not processes:
-        text(30,544,'No process data',12,MUTED)
-    for i,p in enumerate(processes):
-        y=537+i*21
-        text(30,y,f"{p.get('name','?')} · {p.get('pid','?')}",12,max_width=330)
-        text(377,y,fmt(p.get('cpu_percent'),1,'%'),11,MUTED)
-        text(457,y,fmt((p['rss_bytes']/2**20) if p.get('rss_bytes') is not None else None,0,' M'),11,MUTED)
-    text(30,650,'CPU per core · resident memory',9,MUTED)
-
-    card(16,802,508,109)
-    containers = data.get('containers', {})
-    items = containers.get('containers', [])
-    running = sum(c.get('state') == 'running' for c in items)
-    text(30,814,'Containers',14,bold=True)
-    text(371,817,f'{running} / {len(items)} running' if containers.get('available') else 'Unavailable',10,MUTED)
-    for i,c in enumerate(items[:2]):
-        y=846+i*26
-        text(30,y,c.get('name') or 'Unnamed',12,max_width=325)
-        text(392,y,c.get('state') or 'Unknown',11,GREEN if c.get('state')=='running' else AMBER,max_width=113)
-    if not items:
-        text(30,850,'No containers' if containers.get('available') else 'Status unavailable',12,MUTED)
+    procs = sorted(data.get('processes') or [], key=lambda p: p.get('cpu_percent') or 0, reverse=True)
+    x0, y0, x1, y1 = OV_PROC
+    card(x0, y0, x1 - x0, y1 - y0)
+    text(585, 1615, 'Processes', 34, MUTED)
+    text(585, 1660, str(len(procs)) if procs else '—', 72, bold=True)
+    text(585, 1760, 'top by CPU', 30, MUTED)
+    for i, pr in enumerate(procs[:4]):
+        y = 1840 + i * 75
+        text(585, y, pr.get('name') or '?', 34, max_width=300)
+        text(1020, y + 2, fmt(pr.get('cpu_percent'), 0, '%'), 32, MUTED, anchor='ra')
     return image
 
 
@@ -193,7 +175,9 @@ W, H = 1080, 2340            # layout/touch space; frames are drawn at P x this 
 P = 2 / 3
 IMG = (720, 1560)
 TAB_Y = 2190
-TABS = ('Overview', 'Containers', 'Processes', 'Network', 'Power')
+TABS = ('Overview', 'Containers', 'Processes', 'Network', 'Files', 'Power')
+TAB_ICONS = ('\U000F056E', '\U000F0868', '\U000F0EE0', '\U000F05A9', '\U000F024B', '\U000F0425')  # Material Design (Nerd Font)
+FILES_PAGE = TABS.index('Files')
 TAB_W = W // len(TABS)
 ROW_HS = {1: 170, 2: 120}   # list row height per page (containers, processes)
 ROW_H = ROW_HS[1]
@@ -210,6 +194,8 @@ CONFIRM_TEXT = {'restart': ('Restart', 'The container will be restarted'), 'paus
                 'forget_wifi': ('Forget', 'Deletes the saved password'),
                 'forget_wifi_active': ('Forget', 'Wi-Fi disconnects; the phone may go offline'),
                 'forget_bt': ('Forget', 'Unpairs it; pair again to reconnect'),
+                'delete': ('Delete', 'The file is gone for good'),
+                'delete_dir': ('Delete', 'The folder and everything in it'),
                 'reboot': ('Reboot', 'The phone restarts'), 'poweroff': ('Shut down', 'Turn it back on with the power button')}
 POWER_BTNS = (('reboot', (30, 1620, 520, 1820)), ('poweroff', (560, 1620, 1050, 1820)))
 LIST_TOP = 150
@@ -226,8 +212,9 @@ NET_ROWS = (('ssh', 'SSH'), ('tailscale', 'Tailscale'), ('usb', 'USB'), ('blueto
 IPCFG_BTN = (30, 1070, 1050, 1190)      # Wi-Fi details: IP & DNS settings
 SAVED_BTN = (30, 1210, 1050, 1330)      # Wi-Fi details: saved networks (forget)
 CHANGE_BTN = (30, 1350, 1050, 1470)     # Wi-Fi details: open the network picker
-FILES_BTN = (30, 1860, 1050, 2020)      # Power tab: file browser (read-only)
 HOME_DIR = '/home/philipp'
+WRITABLE = ('/home/philipp', '/mnt/sd')    # Files may create/delete only below these (the service runs as root)
+MKDIR_BTN, DEL_BTN = (690, 30, 860, 130), (880, 30, 1050, 130)
 FILE_TOP, FILE_ROW, FILE_LINE = 210, 120, 44
 FILES_MAX, FILE_PEEK = 500, 65536
 NO_PREVIEW = ('/proc', '/sys', '/dev')  # reads there can block or hang the kernel (debugfs regmaps)
@@ -236,20 +223,33 @@ IP_FIELDS = (('addr', 'Address / prefix', 'e.g. 10.0.0.50/24'), ('gw', 'Gateway'
              ('dns', 'DNS servers', 'empty = from router; comma between servers'))
 IP_BOXES = tuple((f, (30, 320 + i * 190, 1050, 480 + i * 190)) for i, (f, _, _) in enumerate(IP_FIELDS))
 IR = '/dev/lirc0'
-# Common TV codes (ir-ctl protocol, {button: scancode}); only LG verified on a real TV so far
+# Common TV codes (ir-ctl protocol, {button: scancode or (protocol, scancode)}); LG and Sony power verified on real TVs.
+# A key a brand lacks is drawn dimmed. Sony Back/Play/Pause are SIRC-15 device 0x97 (Bravia).
 IR_BRANDS = (('LG', 'nec', {'Power': 0x0408, 'Input': 0x040b, 'Mute': 0x0409, 'Vol +': 0x0402, 'Vol -': 0x0403,
-                            'Ch +': 0x0400, 'Ch -': 0x0401}),
+                            'Ch +': 0x0400, 'Ch -': 0x0401, 'Home': 0x047c, 'Up': 0x0440, 'Down': 0x0441,
+                            'Left': 0x0407, 'Right': 0x0406, 'OK': 0x0444, 'Back': 0x0428, 'Menu': 0x0443,
+                            'Play': 0x04b0, 'Pause': 0x04ba}),
              ('Samsung', 'necx', {'Power': 0x070702, 'Input': 0x070701, 'Mute': 0x07070f, 'Vol +': 0x070707,
-                                  'Vol -': 0x07070b, 'Ch +': 0x070712, 'Ch -': 0x070710}),
+                                  'Vol -': 0x07070b, 'Ch +': 0x070712, 'Ch -': 0x070710, 'Home': 0x070779,
+                                  'Up': 0x070760, 'Down': 0x070761, 'Left': 0x070765, 'Right': 0x070762,
+                                  'OK': 0x070768, 'Back': 0x070758, 'Menu': 0x07071a, 'Play': 0x070747,
+                                  'Pause': 0x07074a}),
              ('Sony', 'sony12', {'Power': 0x010015, 'Input': 0x010025, 'Mute': 0x010014, 'Vol +': 0x010012,
-                                 'Vol -': 0x010013, 'Ch +': 0x010010, 'Ch -': 0x010011}),
+                                 'Vol -': 0x010013, 'Ch +': 0x010010, 'Ch -': 0x010011, 'Home': 0x010060,
+                                 'Up': 0x010074, 'Down': 0x010075, 'Left': 0x010034, 'Right': 0x010033,
+                                 'OK': 0x010065, 'Back': ('sony15', 0x970023), 'Menu': ('sony15', 0x970036),
+                                 'Play': ('sony15', 0x97001a), 'Pause': ('sony15', 0x970019)}),
              ('Philips', 'rc5', {'Power': 0x000c, 'Input': 0x0038, 'Mute': 0x000d, 'Vol +': 0x0010,
                                  'Vol -': 0x0011, 'Ch +': 0x0020, 'Ch -': 0x0021}))
 IR_BRAND_BTN = (30, 170, 1050, 290)
-IR_KEYS = ('Power', 'Input', 'Mute', 'Vol +', 'Ch +', None, 'Vol -', 'Ch -')
-IR_BTNS = tuple((k, (30 + (i % 2) * 520, 330 + (i // 2) * 210, 530 + (i % 2) * 520, 510 + (i // 2) * 210))
-                for i, k in enumerate(IR_KEYS) if k)
-IR_ALL_BTN = (30, 1200, 1050, 1340)
+_C4, _C3 = (30, 290, 550, 810), (30, 375, 720)       # 4-wide rows (240 px keys), 3-wide pad (330 px keys)
+IR_BTNS = tuple([(k, (_C4[i], 320, _C4[i] + 240, 450)) for i, k in enumerate(('Power', 'Input', 'Mute', 'Home'))]
+                + [(k, (_C3[i % 3], 480 + i // 3 * 165, _C3[i % 3] + 330, 630 + i // 3 * 165)) for i, k in enumerate(
+                    ('Back', 'Up', 'Menu', 'Left', 'OK', 'Right', 'Play', 'Down', 'Pause'))]
+                + [(k, (_C4[i], 990, _C4[i] + 240, 1120)) for i, k in enumerate(('Vol -', 'Vol +', 'Ch -', 'Ch +'))])
+IR_ARROWS = {'Up': ((0, -1), (-1, 1), (1, 1)), 'Down': ((0, 1), (-1, -1), (1, -1)),
+             'Left': ((-1, 0), (1, -1), (1, 1)), 'Right': ((1, 0), (-1, -1), (-1, 1))}   # no arrow glyphs in Open Sans
+IR_ALL_BTN = (30, 1150, 1050, 1280)
 BT_VIS = (30, 310, 530, 430)
 BT_NAME = (550, 310, 1050, 430)
 NET_TOP, NET_ROW = 720, 150
@@ -623,6 +623,12 @@ def sd_free(path='/mnt/sd'):
     return f' · SD {st.f_bavail * st.f_frsize / 2**30:.1f} GiB'
 
 
+def writable(path, strict=False):
+    """Below WRITABLE (strict: not a root itself, for deleting)."""
+    path = os.path.realpath(path)
+    return any(path.startswith(r + '/') or (path == r and not strict) for r in WRITABLE)
+
+
 def fmt_size(n):
     return '—' if n is None else f'{n} B' if n < 1024 else next(
         f'{n / 1024 ** i:.1f} {u}' for i, u in ((1, 'KiB'), (2, 'MiB'), (3, 'GiB'), (4, 'TiB')) if n < 1024 ** (i + 1) or u == 'TiB')
@@ -747,7 +753,8 @@ def back_btn(text, card):
 
 def btn(text, card, box, label, color=CYAN, size=48, bold=True):
     card(box[0], box[1], box[2] - box[0], box[3] - box[1], outline=color)
-    text((box[0] + box[2]) // 2, (box[1] + box[3]) // 2, label, size, color, bold=bold, anchor='mm')
+    glyph = len(label) == 1 and ord(label) >= 0xE000
+    text((box[0] + box[2]) // 2, (box[1] + box[3]) // 2, label, size, color, bold=bold, anchor='mm', icon=glyph)
 
 
 def page_ssh(w, data):
@@ -842,9 +849,24 @@ def page_saved(w, data):
 def page_files(w, data):
     image = Image.new('RGB', IMG, BG)
     d, text, card, bar = tools(image)
-    back_btn(text, card)
     v, path = w['view'], w['path']
-    text(290, 48, os.path.basename(v['name'] if v else path) or '/', 56, bold=True, max_width=760)
+    if w.get('edit'):
+        back_btn(text, card)
+        text(290, 48, 'New folder', 56, bold=True)
+        field(text, card, (30, 200, 1050, 360), f"in {path[-40:]}", w['pw'], True, mono=False)
+        btn(text, card, CONNECT_BTN, 'Create folder', GREEN if w['pw'].strip() else MUTED, 56)
+        draw_kb(d, text, w)
+        return image
+    tx = 40
+    if v or w.get('dele') or path != '/':
+        back_btn(text, card)
+        tx = 290
+    text(tx, 48, ('Delete what?' if w.get('dele') else os.path.basename(v['name'] if v else path) or '/'), 56,
+         bold=True, max_width=660 - tx, color=AMBER if w.get('dele') else TEXT)
+    can = writable(v['name'] if v else path, strict=bool(v))
+    if not v:
+        btn(text, card, MKDIR_BTN, '\U000F0257', CYAN if can else LINE, 64, False)
+    btn(text, card, DEL_BTN, '\U000F0A7A', (AMBER if w.get('dele') or v else MUTED) if can else LINE, 64, False)
     text(40, 150, ('…' + path[-48:]) if len(path) > 49 else path, 30, MUTED, mono=True)
     clip = Image.new('RGB', (IMG[0], round((TAB_Y - FILE_TOP) * P)), BG)
     cd, ctext, ccard, _ = tools(clip)
@@ -861,11 +883,14 @@ def page_files(w, data):
         first = w['scroll'] // FILE_ROW
         for n, e in enumerate(w['ents'][first:first + (TAB_Y - FILE_TOP) // FILE_ROW + 2], first):
             y = n * FILE_ROW - w['scroll']
-            ccard(30, y, 1020, FILE_ROW - 12)
+            ccard(30, y, 1020, FILE_ROW - 12, outline=AMBER if w.get('dele') else LINE)
             ctext(60, y + 16, e['name'] + ('/' if e['dir'] else ''), 42, CYAN if e['dir'] else TEXT, max_width=700)
             when = dt.datetime.fromtimestamp(e['mtime']).strftime('%Y-%m-%d %H:%M') if e['mtime'] else ''
             ctext(60, y + 70, when, 26, MUTED)
-            ctext(1020, y + 30, '›' if e['dir'] else fmt_size(e['size']), 36, MUTED, anchor='ra')
+            if w.get('dele'):
+                ctext(1010, y + FILE_ROW // 2 - 6, '\U000F0A7A', 56, AMBER, anchor='rm', icon=True)
+            else:
+                ctext(1020, y + 30, '›' if e['dir'] else fmt_size(e['size']), 36, MUTED, anchor='ra')
     image.paste(clip, (0, round(FILE_TOP * P)))
     return image
 
@@ -895,10 +920,15 @@ def page_ir(w, data):
     text(290, 48, 'IR remote', 56, bold=True)
     brand = IR_BRANDS[w['brand']][0]
     btn(text, card, IR_BRAND_BTN, f'{brand} TV · tap to switch', CYAN, 44)
+    codes = IR_BRANDS[w['brand']][2]
     for k, box in IR_BTNS:
-        btn(text, card, box, k, AMBER if k == 'Power' else TEXT, 52)
+        color = LINE if k not in codes else AMBER if k == 'Power' else CYAN if k == 'OK' else TEXT
+        btn(text, card, box, '' if k in IR_ARROWS else k, color, 44)
+        if k in IR_ARROWS:
+            cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+            d.polygon([((cx + dx * 30) * P, (cy + dy * 30) * P) for dx, dy in IR_ARROWS[k]], fill=color)
     btn(text, card, IR_ALL_BTN, 'All TVs off (every brand)', AMBER, 44)
-    text(540, 1420, 'Point the top edge of the phone at the device' if Path(IR).exists() else 'No IR device (/dev/lirc0)',
+    text(540, 1340, 'Point the top edge of the phone at the device' if Path(IR).exists() else 'No IR device (/dev/lirc0)',
          32, MUTED if Path(IR).exists() else AMBER, anchor='mm')
     return image
 
@@ -1081,6 +1111,8 @@ class Ui:
         self.wifi = None       # picker: {'nets', 'sel', 'pw', 'mode', 'show'}
         self.sub = None        # Network sub-page: {'kind': 'ssh' | 'usb' | 'bt', ...}
         self.pair = None       # Bluetooth agent request: {'name', 'kind', 'code'}
+        self.files = {'kind': 'files', 'path': '/', 'ents': [], 'scroll': 0, 'view': None}   # Files tab state
+        self.files_opened = False
 
     def tick(self, now):
         changed = False
@@ -1122,12 +1154,21 @@ class Ui:
                     if act.startswith('forget'):
                         self.toast = ('Forgetting…', float('inf'))
                         return [('wifi', *arg)]
+                    if act.startswith('delete'):
+                        self.delete(arg, now)
+                        return []
                     return [('act', act, arg)]
             return []
         if self.wifi is not None:
             return self.on_wifi(g, now)
         if self.sub is not None:
             return self.on_sub(g, data, now)
+        if self.page == FILES_PAGE and kind != 'swipe' and (self.files.get('edit') or not (kind == 'tap' and g[2] >= TAB_Y)):
+            self.sub = self.files            # the Files tab reuses the sub-page handlers
+            try:
+                return self.on_sub(g, data, now)
+            finally:
+                self.sub = None
         if self.detail or self.pdetail:
             if (kind == 'tap' and hit(BACK_BTN, g[1], g[2])) or (kind == 'swipe' and g[1] == 'right'):
                 self.detail = self.info = self.pdetail = None
@@ -1166,8 +1207,10 @@ class Ui:
                 return [('detail', self.detail)]
             elif hitrow:
                 self.pdetail = (hitrow['pid'], hitrow['start'])
-            elif self.page == 0 and 802 * 2.4 <= y <= 911 * 2.4:
-                self.page = 1
+            elif self.page == 0:
+                for box, page in ((OV_BATT, len(TABS) - 1), (OV_NET, 3), (OV_CONT, 1), (OV_PROC, 2)):
+                    if hit(box, x, y):
+                        self.page = page
             elif self.page == 3 and NET_TOP <= y < NET_TOP + len(NET_ROWS) * NET_ROW:
                 key = NET_ROWS[int((y - NET_TOP) // NET_ROW)][0]
                 up = ((data.get('services') or {}).get(key) or {}).get('up')
@@ -1189,9 +1232,6 @@ class Ui:
             elif self.page == 3 and hit(WIFI_CARD, x, y):
                 self.sub = {'kind': 'wifi', 'info': None}
                 return [('wifi', wifi_info)]
-            elif self.page == len(TABS) - 1 and hit(FILES_BTN, x, y):
-                self.sub = {'kind': 'files', 'path': '/', 'ents': [], 'scroll': 0, 'view': None}
-                self.open_dir(HOME_DIR if os.path.isdir(HOME_DIR) else '/')
             elif self.page == len(TABS) - 1:
                 for act, box in POWER_BTNS:
                     if hit(box, x, y):
@@ -1235,20 +1275,74 @@ class Ui:
         kb_type(w, next((k for k, box in kb_keys(w['mode']) if hit(box, x, y)), None))
         return []
 
-    def open_dir(self, path):
+    def open_dir(self, path, keep_scroll=False):
+        w = self.sub or self.files
         try:
-            self.sub.update(path=path, ents=list_dir(path), scroll=0, view=None)
+            w.update(path=path, ents=list_dir(path), scroll=w['scroll'] if keep_scroll else 0, view=None, edit=False,
+                     dele=w.get('dele') and keep_scroll)
         except OSError as exc:
             self.toast = (f"{os.path.basename(path) or '/'}: {exc.strerror or 'cannot open'}", time.monotonic() + 4)
 
-    def on_files(self, g, x, y):
+    def ask_delete(self, full, isdir, now):
+        if writable(full, strict=True):
+            self.confirm = ('delete_dir' if isdir else 'delete', full, os.path.basename(full), now + CONFIRM_S)
+        else:
+            self.toast = ('Read-only here (only /home/philipp and /mnt/sd)', now + 4)
+
+    def delete(self, path, now):
+        """Runs on the UI thread. ponytail: a huge tree stalls the screen while rmtree runs; move to dpool if that bites."""
+        try:
+            if os.path.isdir(path) and not os.path.islink(path):
+                shutil.rmtree(path)
+            else:
+                os.remove(path)
+            msg = f'Deleted {os.path.basename(path)}'
+        except OSError as exc:
+            msg = f'Delete failed: {exc.strerror or exc}'
+        self.toast = (msg, now + 4)
+        self.open_dir(self.files['path'], keep_scroll=True)
+
+    def on_files(self, g, x, y, now):
         w = self.sub
+        if w.get('edit'):
+            if hit(CONNECT_BTN, x, y):
+                name, full = w['pw'].strip(), os.path.join(w['path'], w['pw'].strip())
+                if not name or '/' in name or name in ('.', '..'):
+                    self.toast = ('Invalid folder name', now + 4)
+                    return []
+                try:
+                    os.mkdir(full)
+                    st = os.stat(w['path'])
+                    os.chown(full, st.st_uid, st.st_gid)      # owned like its parent, not root
+                    self.toast = (f'Created {name}', now + 4)
+                except OSError as exc:
+                    self.toast = (f'mkdir failed: {exc.strerror or exc}', now + 4)
+                self.open_dir(w['path'], keep_scroll=True)
+            else:
+                kb_type(w, next((k for k, box in kb_keys(w['mode']) if hit(box, x, y)), None))
+            return []
+        if hit(DEL_BTN, x, y):
+            if w['view']:
+                self.ask_delete(w['view']['name'], False, now)
+            elif writable(w['path']):
+                w['dele'] = not w.get('dele')
+            else:
+                self.toast = ('Read-only here (only /home/philipp and /mnt/sd)', now + 4)
+            return []
+        if hit(MKDIR_BTN, x, y) and not w['view']:
+            if writable(w['path']):
+                w.update(edit=True, pw='', mode='abc', show=True)
+            else:
+                self.toast = ('Read-only here (only /home/philipp and /mnt/sd)', now + 4)
+            return []
         if w['view'] is None and y >= FILE_TOP:
             i = int((y - FILE_TOP + w['scroll']) // FILE_ROW)
             if 0 <= i < len(w['ents']):
                 e = w['ents'][i]
                 full = os.path.join(w['path'], e['name'])
-                if e['dir']:
+                if w.get('dele') or g[0] == 'long':
+                    self.ask_delete(full, e['dir'], now)
+                elif e['dir']:
                     self.open_dir(full)
                 else:
                     w.update(view={'name': full, **file_view(full)}, scroll=0)
@@ -1263,6 +1357,8 @@ class Ui:
             elif w['kind'] == 'saved':                       # a forgotten network can change the details
                 self.sub = {'kind': 'wifi', 'info': None}
                 return [('wifi', wifi_info)]
+            elif w['kind'] == 'files' and (w.get('edit') or w.get('dele')):
+                w.update(edit=False, dele=False)
             elif w['kind'] == 'files' and w['view']:
                 w.update(view=None, scroll=w.get('dir_scroll', 0))
             elif w['kind'] == 'files' and w['path'] != '/':
@@ -1272,7 +1368,7 @@ class Ui:
             else:
                 self.sub = None
             return []
-        if w['kind'] == 'files' and kind in ('scrollstart', 'scroll'):
+        if w['kind'] == 'files' and kind in ('scrollstart', 'scroll') and not w.get('edit'):
             if kind == 'scrollstart':
                 w['base'] = w['scroll']
                 return []
@@ -1283,6 +1379,8 @@ class Ui:
                 total = len(v['lines']) * FILE_LINE if v else len(w['ents']) * FILE_ROW
             w['scroll'] = int(min(max(0, total - (TAB_Y - FILE_TOP) + 40), max(0, w['base'] - g[1])))
             return []
+        if kind == 'long' and w['kind'] == 'files' and not (w['view'] or w.get('edit')):
+            return self.on_files(g, g[1], g[2], now)
         if kind == 'long' and w['kind'] == 'bt' and not w.get('edit'):
             devs, i = w['devs'] or [], int((g[2] - BT_TOP) // WIFI_ROW) if g[2] >= BT_TOP else -1
             if 0 <= i < len(devs) and devs[i]['paired']:
@@ -1295,7 +1393,7 @@ class Ui:
         if w['kind'] == 'files':
             if w['view'] is None:
                 w['dir_scroll'] = w['scroll']
-            return self.on_files(g, x, y)
+            return self.on_files(g, x, y, now)
         if w['kind'] == 'saved':
             nets, i = w['devs'] or [], int((y - WIFI_TOP) // WIFI_ROW) if y >= WIFI_TOP else -1
             if 0 <= i < len(nets):
@@ -1360,8 +1458,9 @@ class Ui:
                 self.toast = ('Sending power to every brand…', float('inf'))
                 return [('wifi', ir_all_off)]
             for k, box in IR_BTNS:
-                if hit(box, x, y):
-                    return [('wifi', ir_send, proto, codes[k], f'{brand} {k}')]
+                if hit(box, x, y) and k in codes:
+                    p, code = codes[k] if isinstance(codes[k], tuple) else (proto, codes[k])
+                    return [('wifi', ir_send, p, code, f'{brand} {k}')]
         elif w['kind'] == 'bt' and w.get('edit'):
             if hit(CONNECT_BTN, x, y):
                 name = w['pw'].strip()
@@ -1392,6 +1491,9 @@ class Ui:
         return []
 
     def render(self, data, stale, now):
+        if self.page == FILES_PAGE and not self.files_opened:
+            self.files_opened = True
+            self.open_dir(HOME_DIR if os.path.isdir(HOME_DIR) else '/')
         if self.wifi is not None:
             image = page_wifi(self.wifi)
         elif self.sub is not None:
@@ -1403,16 +1505,24 @@ class Ui:
             image = page_proc_detail(self, data, now)
         elif self.page == 0:
             image = render(data, stale)
+        elif self.page == FILES_PAGE:
+            image = page_files(self.files, data)
         else:
-            image = (page_containers, page_processes, page_network, page_battery)[self.page - 1](
+            image = {1: page_containers, 2: page_processes, 3: page_network, 5: page_battery}[self.page](
                 data, stale, *((self.scroll,) if self.page in (1, 2) else ()))
         d, text, card, bar = tools(image)
-        if not (self.detail or self.pdetail or self.wifi is not None or self.sub is not None):
+        typing = self.page == FILES_PAGE and self.files.get('edit')     # keyboard needs the tab bar's space
+        if not (self.detail or self.pdetail or self.wifi is not None or self.sub is not None or typing):
             d.rectangle((0, TAB_Y * P, IMG[0], IMG[1]), fill=PANEL)
             d.line((0, TAB_Y * P, IMG[0], TAB_Y * P), fill=LINE, width=1)
             for i, name in enumerate(TABS):
-                text(i * TAB_W + TAB_W // 2, (TAB_Y + H) // 2, name, 36, CYAN if i == self.page else MUTED,
-                     bold=i == self.page, anchor='mm')
+                cx, on = i * TAB_W + TAB_W // 2, i == self.page
+                if on:
+                    d.rounded_rectangle(((cx - 50) * P, (TAB_Y + 6) * P, (cx + 50) * P, (TAB_Y + 14) * P), 4, fill=CYAN)
+                if ICON_FONT.exists():
+                    text(cx, (TAB_Y + H) // 2 + 4, TAB_ICONS[i], 76, CYAN if on else MUTED, anchor='mm', icon=True)
+                else:
+                    text(cx, (TAB_Y + H) // 2, name[:5], 32, CYAN if on else MUTED, bold=on, anchor='mm')
         if self.toast[0]:
             card(30, TAB_Y - 150, 1020, 110, fill=BG, outline=AMBER)
             text(60, TAB_Y - 122, self.toast[0], 38, AMBER, max_width=960)
@@ -1449,9 +1559,9 @@ class Ui:
 def tools(image):
     d = ImageDraw.Draw(image)
 
-    def text(x, y, value, size, color=TEXT, bold=False, max_width=None, anchor='la', mono=False):
+    def text(x, y, value, size, color=TEXT, bold=False, max_width=None, anchor='la', mono=False, icon=False):
         value = str(value if value is not None else '—')
-        f = font(max(8, round(size * P)), bold, mono)
+        f = font(max(8, round(size * P)), bold, mono, icon)
         if max_width:
             while len(value) > 1 and d.textlength(value, font=f) > max_width * P:
                 value = value[:-2] + '…'
@@ -1628,7 +1738,6 @@ def page_battery(data, stale):
     for act, (x0, y0, x1, y1) in POWER_BTNS:
         card(x0, y0, x1 - x0, y1 - y0, outline=AMBER if act == 'poweroff' else CYAN)
         text((x0 + x1) // 2, (y0 + y1) // 2, CONFIRM_TEXT[act][0], 56, bold=True, anchor='mm')
-    btn(text, card, FILES_BTN, 'Files', CYAN, 52)
     return image
 
 
@@ -1899,7 +2008,13 @@ def selftest():
     ui.render(ndata, False, 9)
     assert ui.on_gesture(('tap', 200, 400), ndata, 9) == [('wifi', ir_send, 'nec', 0x0408, 'LG Power')]
     ui.on_gesture(('tap', 500, 230), ndata, 9)
-    assert ui.on_gesture(('tap', 800, 1050), ndata, 9) == [('wifi', ir_send, 'necx', 0x070710, 'Samsung Ch -')]
+    assert ui.on_gesture(('tap', 650, 1050), ndata, 9) == [('wifi', ir_send, 'necx', 0x070710, 'Samsung Ch -')]
+    ui.on_gesture(('tap', 500, 230), ndata, 9)
+    assert ui.on_gesture(('tap', 200, 550), ndata, 9) == [('wifi', ir_send, 'sony15', 0x970023, 'Sony Back')]
+    assert ui.on_gesture(('tap', 540, 720), ndata, 9) == [('wifi', ir_send, 'sony12', 0x010065, 'Sony OK')]
+    ui.on_gesture(('tap', 500, 230), ndata, 9)
+    ui.render(ndata, False, 9)
+    assert ui.on_gesture(('tap', 900, 380), ndata, 9) == []               # Philips has no Home code
     assert ir_send.__code__.co_consts  # sony gap is in ir_send
     assert parse_saved('home:802-11-wireless:wlan0\ncafe\\:5G:802-11-wireless:\nlo:loopback:lo\n') == [
         {'name': 'home', 'active': True}, {'name': 'cafe:5G', 'active': False}]
@@ -1932,26 +2047,58 @@ def selftest():
         assert file_view(f'{tmp}/a.txt')['lines'][0] == 'hello   world' and 'Binary' in file_view(f'{tmp}/b.bin')['lines'][0]
         assert file_view(f'{tmp}/c.png')['img'].size == (40, 20) and 'No preview' in file_view('/proc/kmsg')['lines'][0]
         ui = Ui()
-        ui.page = len(TABS) - 1
+        ui.on_gesture(('tap', FILES_PAGE * TAB_W + 5, TAB_Y + 20), data, 0)
+        assert ui.page == FILES_PAGE and ui.sub is None
         ui.render(data, False, 0)
-        ui.on_gesture(('tap', 500, 1900), data, 0)
-        assert ui.sub['kind'] == 'files'
+        f = ui.files
+        assert f['path'] in (HOME_DIR, '/')
+        ui.sub = f
         ui.open_dir(tmp)
+        ui.sub = None
         ui.render(data, False, 0)
         ui.on_gesture(('tap', 500, FILE_TOP + 5), data, 0)               # sub/
-        assert ui.sub['path'] == f'{tmp}/sub'
+        assert f['path'] == f'{tmp}/sub' and ui.sub is None
         ui.on_gesture(('tap', 100, 80), data, 0)                          # back up
-        assert ui.sub['path'] == tmp
+        assert f['path'] == tmp
         ui.on_gesture(('tap', 500, FILE_TOP + FILE_ROW + 5), data, 0)    # a.txt
-        assert ui.sub['view']['lines'][0].startswith('hello')
+        assert f['view']['lines'][0].startswith('hello')
         ui.on_gesture(('scrollstart',), data, 0)
         ui.on_gesture(('scroll', -300), data, 0)
-        assert ui.sub['scroll'] == 300
+        assert f['scroll'] == 300
         ui.render(data, False, 0)
         ui.on_gesture(('tap', 100, 80), data, 0)
-        assert ui.sub['view'] is None
+        assert f['view'] is None
         ui.on_gesture(('tap', 500, FILE_TOP + 3 * FILE_ROW + 5), data, 0)
         ui.render(data, False, 0)
+        ui.on_gesture(('tap', 100, 80), data, 0)
+        global WRITABLE
+        WRITABLE = (tmp,)
+        ui.on_gesture(('tap', 770, 80), data, 0)                          # new folder
+        assert f['edit']
+        ui.render(data, False, 0)
+        f['pw'] = 'new'
+        ui.on_gesture(('tap', 500, 1400), data, 0)
+        assert os.path.isdir(f'{tmp}/new') and not f['edit']
+        ui.on_gesture(('tap', 960, 80), data, 0)                          # delete mode
+        assert f['dele']
+        ui.render(data, False, 0)
+        ui.on_gesture(('tap', 500, FILE_TOP + 5), data, 0)                # 'new' sorts first
+        assert ui.confirm[:2] == ('delete_dir', f'{tmp}/new')
+        ui.render(data, False, 0)
+        ui.on_gesture(('tap', 760, 1200), data, 0)
+        assert not os.path.exists(f'{tmp}/new') and ui.confirm is None
+        ui.on_gesture(('long', 500, FILE_TOP + FILE_ROW + 5), data, 0)    # long-press a.txt
+        assert ui.confirm[:2] == ('delete', f'{tmp}/a.txt')
+        ui.on_gesture(('tap', 300, 1200), data, 0)
+        assert os.path.exists(f'{tmp}/a.txt')
+        WRITABLE = ('/home/philipp', '/mnt/sd')
+        assert not writable('/etc') and writable('/home/philipp') and not writable('/home/philipp', strict=True)
+        ui.on_gesture(('swipe', 'left'), data, 0)
+        assert ui.page == FILES_PAGE + 1
+    ui = Ui()
+    ui.render(data, False, 0)
+    ui.on_gesture(('tap', 500, 1700), data, 0)
+    assert ui.page == 1
     assert fmt_size(5) == '5 B' and fmt_size(2048) == '2.0 KiB' and fmt_size(3 << 30) == '3.0 GiB'
     print('selftest ok')
 
