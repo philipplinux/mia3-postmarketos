@@ -76,6 +76,10 @@ laurel uses `deviceinfo_append_dtb=true`, so the kernel in boot.img is `vmlinuz`
 2. `sudo mkinitfs`
 3. `systemctl reboot --reboot-argument=bootloader`, then from a PC `fastboot flash boot_b boot.img && fastboot reboot`
 
+Kernel options: `/etc/kernel-cmdline.d/*.conf` (picked up by `mkinitfs`). `50-mia3-fbcon.conf` holds
+`drm_kms_helper.drm_fbdev_overalloc=100`: the kernel default 200 gives fbdev a 720x3120 buffer, and boot console
+text lands outside the visible half.
+
 `fastboot boot` doesn't work on this bootloader. A kernel package upgrade replaces the dtb: re-apply after upgrades.
 `k7.dts` is a decompiled dtb with raw phandles; they are only valid for that build, re-derive them for another kernel.
 
