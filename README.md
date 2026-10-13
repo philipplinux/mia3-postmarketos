@@ -131,7 +131,7 @@ Binds `0.0.0.0:8090` but answers only on the interfaces switched on in the phone
 ## Shell
 
 Power key cycles: dashboard → tty1 console (fbcon, plain prompt, buffyboard touch keyboard) → blank. A strip at the top of the
-consoles switches tty1–tty4 by tap; buffyboard restarts on each switch (the console repaints over it) and shows on all four.
+consoles (swipe down from the top edge to show it, swipe up or pick a tty to hide) switches tty1–tty4; buffyboard restarts on each switch (the console repaints over it) and shows on all four.
 tty2–tty4 autologin: `display/getty-autologin.conf` → `/etc/systemd/system/getty@tty{2,3,4}.service.d/autologin.conf`,
 `systemctl enable getty@tty2 getty@tty3 getty@tty4`.
 

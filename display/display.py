@@ -241,7 +241,7 @@ POWER_BTNS = (('reboot', (30, 1620, 520, 1820)), ('poweroff', (560, 1620, 1050, 
 LIST_TOP = 150
 LIST_BOTTOM = TAB_Y - 10
 DRAG_PX = 40
-TTYS = (1, 2, 3, 4)  # switcher strip on top of the consoles; tap a tab to change VT
+TTYS = (1, 2, 3, 4)  # switcher strip: swipe down from the top edge to show, tap a tab (hides it) or swipe up
 BAR_DIV = 24         # strip height = panel height / BAR_DIV (65 px on 1560)
 KMSCON_VT = 2        # power key: dashboard -> tty1 console -> kmscon (if running; off by default) -> blank
 VOL_STEP = 600        # volume keys scroll lists by this many px
@@ -2599,6 +2599,8 @@ class Display:
         self.view = 'terminal'
         self.kb = None
         self.bars = {}
+        self.bar_on = False
+        self.under = None
 
     def keyboard(self, on):
         if on and self.kb is None:
@@ -2750,6 +2752,7 @@ class Display:
         self.view = 'kmscon'
 
     def switch_vt(self, n):
+        self.bar_on, self.under = False, None     # the switch repaints the whole console, strip included
         fcntl.ioctl(self.tty, 0x5606, n)  # VT_ACTIVATE; buffyboard keeps running and types into the new VT
         if self.view == 'kmscon' and n != KMSCON_VT:     # kmscon leaves its DRM buffer on the CRTC
             for _ in range(20):                           # no VT_WAITACTIVE: a stuck kmscon must not hang the loop
@@ -2768,7 +2771,7 @@ class Display:
             vt = int(Path('/sys/class/tty/tty0/active').read_text().strip().removeprefix('tty'))
         except (OSError, ValueError):
             return
-        if vt not in TTYS or self.view == 'kmscon':   # kmscon's DRM buffer hides fbdev
+        if not self.bar_on or vt not in TTYS or self.view == 'kmscon':   # kmscon's DRM buffer hides fbdev
             return
         bh, rb = self.height // BAR_DIV, self.width * 4
         if vt not in self.bars:
@@ -2790,6 +2793,24 @@ class Display:
                 self.refresh_panel()
             except (OSError, RuntimeError):
                 pass
+
+    def hide_bar(self):
+        # Put back the console pixels saved when the strip appeared (a VT resize would repaint, but ble.sh clears on it).
+        self.bar_on = False
+        if self.under:
+            off = self.yoffset * self.stride
+            self.memory[off:off + len(self.under)] = self.under
+            self.under = None
+            try:
+                self.refresh_panel()
+            except (OSError, RuntimeError):
+                pass
+
+    def show_bar(self):
+        off = self.yoffset * self.stride
+        self.under = self.memory[off:off + self.stride * (self.height // BAR_DIV)]
+        self.bar_on = True
+        self.tty_bar()
 
     def hide(self):
         # Black pixels on the AMOLED panel, without its unreliable power cycle.
@@ -2998,10 +3019,15 @@ def main():
                         display.show(compose())
                         ui_dirty = False
                 elif display.view in ('terminal', 'kmscon'):
-                    for g in gestures:                                      # buffyboard ignores taps above its keys
-                        if g[0] == 'tap' and g[2] * display.height / H < display.height // BAR_DIV:
+                    for g in gestures:                                      # buffyboard ignores touches above its keys
+                        if g[0] == 'tap' and display.bar_on and g[2] < H // BAR_DIV:
                             display.switch_vt(TTYS[min(len(TTYS) - 1, int(g[1] * len(TTYS) / W))])
-                            display.tty_bar()
+                        elif g[0] == 'scrollend':
+                            dy = touch.y - touch.y0
+                            if not display.bar_on and touch.y0 < H // 15 and dy > H // 12:
+                                display.show_bar()
+                            elif display.bar_on and touch.y0 < H // 3 and dy < -H // 20:
+                                display.hide_bar()
                 elif display.shown and action is None and time.monotonic() >= notice_until:
                     for g in gestures:
                         for effect in ui.on_gesture(g, latest, time.monotonic()):
