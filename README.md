@@ -11,7 +11,8 @@ Tested on kernel `linux-nura-qcom-sm61x5` 7.2.3, booting slot b. No warranty: ba
 | `dashboard/` | Web dashboard (user service on port 8090, reachable per interface: see "Web dashboard"): CPU per core/GPU/battery + charge limit/thermals/services/processes/SD |
 | `charging/` | `pmi632_chg` kernel module (charge on/off, USB suspend) + `chargectl.py` that holds the battery at a set level (default 50 %, `/var/lib/chargectl/chargectl.json` owned by the dashboard user, adjustable on the Power page and the web dashboard) |
 | `thermal-guard/` | Powers the phone off on sustained overheating |
-| `audio/` | Runtime overlay that boots the ADSP (no sound yet, see its README) |
+| `audio/` | Runtime overlays (ADSP, APR/q6, speaker amp, sound card) + `mia3_dtbo.ko` loader; card exists, playback still hangs (see its README) |
+| `thermal-sensors/` | TSENS runtime overlay + module: CPU/GPU temperatures on the dashboards |
 | `shell/` | bash + starship + ble.sh + fzf setup (plain-text prompt on the framebuffer console) |
 
 ## Dependencies

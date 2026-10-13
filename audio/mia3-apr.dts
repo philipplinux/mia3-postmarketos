@@ -1,0 +1,53 @@
+/dts-v1/;
+/plugin/;
+/* APR audio services on the ADSP glink edge (from sm6115.dtsi, without qcom,protection-domain:
+ * qcom_pd_mapper has no sm6125 entry). 0x21 = apps_smmu in k7.dtb. Restart the ADSP after applying. */
+&{/soc@0/remoteproc@ab00000/glink-edge} {
+	apr {
+		compatible = "qcom,apr-v2";
+		qcom,glink-channels = "apr_audio_svc";
+		qcom,domain = <4>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		service@3 {
+			reg = <3>;
+			compatible = "qcom,q6core";
+		};
+		service@4 {
+			compatible = "qcom,q6afe";
+			reg = <4>;
+			dais {
+				compatible = "qcom,q6afe-dais";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				#sound-dai-cells = <1>;
+			};
+			clock-controller {
+				compatible = "qcom,q6afe-clocks";
+				#clock-cells = <2>;
+			};
+		};
+		service@7 {
+			compatible = "qcom,q6asm";
+			reg = <7>;
+			dais {
+				compatible = "qcom,q6asm-dais";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				#sound-dai-cells = <1>;
+				iommus = <0x21 0x1c1 0x0>;
+				dai@0 { reg = <0>; };
+				dai@1 { reg = <1>; };
+				dai@2 { reg = <2>; };
+			};
+		};
+		service@8 {
+			compatible = "qcom,q6adm";
+			reg = <8>;
+			routing {
+				compatible = "qcom,q6adm-routing";
+				#sound-dai-cells = <0>;
+			};
+		};
+	};
+};

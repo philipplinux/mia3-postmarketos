@@ -1,0 +1,13 @@
+[Unit]
+Description=Mi A3 CPU/GPU temperature sensors (TSENS runtime overlay)
+After=systemd-modules-load.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# mia3_tsens.ko = mainline qcom tsens with __init dropped (the built-in one can't probe after boot)
+ExecStart=/sbin/modprobe mia3_tsens
+ExecStart=/sbin/modprobe mia3_dtbo dtbo=mia3-tsens.dtbo
+
+[Install]
+WantedBy=multi-user.target

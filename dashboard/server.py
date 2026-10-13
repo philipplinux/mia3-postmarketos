@@ -36,6 +36,18 @@ def _int_value(value: str | None) -> int | None:
         return None
 
 
+def zone_max(sys_root: Path, prefixes: tuple[str, ...]) -> float | None:
+    """Hottest thermal zone whose type starts with one of prefixes (TSENS zones from mia3-tsens), °C."""
+    temps = []
+    for z in Path(sys_root, "class/thermal").glob("thermal_zone*"):
+        try:
+            if z.joinpath("type").read_text().strip().startswith(prefixes):
+                temps.append(int(z.joinpath("temp").read_text()) / 1000)
+        except (OSError, ValueError):
+            pass
+    return round(max(temps), 1) if temps else None
+
+
 def thermal_info() -> dict[str, Any]:
     """thermal-guard status (+ last line of /var/log/thermal-guard.log) and charge mode."""
     def rd(p):
@@ -434,12 +446,13 @@ class Collector:
             return {
                 "collected_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
                 "battery": {**battery_info(self.sys_root), "charge": charge_conf()},
-                "gpu": gpu_info(self.sys_root),
+                "gpu": {**gpu_info(self.sys_root), "temp_c": zone_max(self.sys_root, ("gpu-",))},
                 "thermal": thermal_info(),
                 "services": services_info(self.run),
                 "uptime_seconds": uptime_seconds(self.proc_root),
                 "cpu": {"percent": cpu_percent, "logical_cores": self.cpu_count,
-                        "process_percent_basis": "one core = 100%", "cores": core_percent},
+                        "process_percent_basis": "one core = 100%", "cores": core_percent,
+                        "temp_c": zone_max(self.sys_root, ("cpu",))},
                 "memory": memory_info(self.proc_root),
                 "storage": storage,
                 "sd": _disk(SD_PATH) if os.path.ismount(SD_PATH) else None,

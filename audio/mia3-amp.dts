@@ -1,0 +1,14 @@
+/dts-v1/;
+/plugin/;
+/* Speaker amp (MAX98927 family, stock driver audio_max98937) on QUP SE1 I2C, reset on TLMM gpio95. 0x12 = tlmm in k7.dtb. */
+&{/soc@0/geniqup@4ac0000/i2c@4a84000} {
+	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
+	speaker_amp: amplifier@3a {
+		compatible = "maxim,max98927";
+		reg = <0x3a>;
+		reset-gpios = <0x12 95 1>;
+		#sound-dai-cells = <0>;
+	};
+};

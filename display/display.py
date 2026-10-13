@@ -140,10 +140,10 @@ def render(data, stale=False, cores=False):
     load = gpu.get('utilization_percent')
     gpu_value = 'Off' if not gpu.get('available') else 'Asleep' if gpu.get('power_state') == 'suspended' \
         else fmt(load, 0, '%') if load is not None else 'n/a'
-    tiles = (('CPU', fmt(cpu.get('percent'), 0, '%'), f"{cpu.get('logical_cores', '—')} cores", cpu.get('percent')),
+    tiles = (('CPU', fmt(cpu.get('percent'), 0, '%'), f"{cpu.get('logical_cores', '—')} cores" + (f" · {cpu['temp_c']:.0f} °C" if cpu.get('temp_c') is not None else ''), cpu.get('percent')),
              ('Memory', gib(mem.get('used_bytes')), f"of {gib(mem.get('total_bytes'))}", mem.get('used_percent')),
              ('Storage', gib(st.get('used_bytes')), f"{gib(st.get('free_bytes'))} free" + sd_free(), st.get('used_percent')),
-             (gpu.get('model') or 'GPU', gpu_value, 'GPU load', load))
+             (gpu.get('model') or 'GPU', gpu_value, 'GPU load' + (f" · {gpu['temp_c']:.0f} °C" if gpu.get('temp_c') is not None else ''), load))
     for i, (label, value, sub, pct) in enumerate(tiles):
         x, y = 30 + i % 2 * 525, 530 + i // 2 * 330
         card(x, y, 495, 300)
