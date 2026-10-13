@@ -41,7 +41,7 @@ and flash slot b + `userdata`, leaving stock Android on slot a.
 
 | Path | You need | Time | Result |
 |---|---|---|---|
-| **3. Generic ready build (easiest)** | fastboot | ~10 min | Simplicity: download and flash. Requires a credential update: log in as `user` / `changeme`, change the password, add your SSH key and Wi-Fi |
+| **3. Generic ready build (easiest)** | fastboot | ~10 min | Download and flash, then set a password and Wi-Fi on the phone's screen (default `user` / `changeme`) |
 | 2. Docker build | Docker | ~1 h first run | Built with your own credentials, parameters and keys (user, password, SSH key, Wi-Fi) |
 | 1. From scratch | pmbootstrap, a kernel tree | an afternoon | Latest postmarketOS, built yourself with this repo's patches; every step by hand, see "From stock to here" |
 
