@@ -4,6 +4,8 @@ A Xiaomi Mi A3 (model M1906F9SH, codename `laurel_sprout`, SoC SM6125) running p
 Tested on kernel `linux-nura-qcom-sm61x5` 7.2.3, booting slot b. No warranty: back up your boot image first.
 
 
+[![Buy me a beer?](https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20beer%3F&emoji=%F0%9F%8D%BA&slug=philipplinux&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff)](https://www.buymeacoffee.com/philipplinux)
+
 ![tty1 console, then a swipe through the on-screen dashboard tabs](docs/demo.gif)
 
 Web dashboard (port 8090):
@@ -235,3 +237,7 @@ Audio has a bottom-speaker on/off slider that restores the previous gain.
 
 Not planned for now (deliberately left disabled): top earpiece and microphones (WCD937x codec + LPASS macros +
 SoundWire, all off in the kernel config) and GPS (needs a QMI LOC userspace client).
+
+---
+
+If this saves you time: [![Buy me a beer?](https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20beer%3F&emoji=%F0%9F%8D%BA&slug=philipplinux&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff)](https://www.buymeacoffee.com/philipplinux)
