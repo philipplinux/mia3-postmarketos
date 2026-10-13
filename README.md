@@ -6,8 +6,8 @@ Tested on kernel `linux-nura-qcom-sm61x5` 7.2.3, booting slot b. No warranty: ba
 | Folder | What |
 |---|---|
 | `dts/` | Device-tree with cpufreq-hw, Bluetooth (WCN3988 on GENI UART) and the IR blaster. `CPUFREQ.md` has the cpufreq-only write-up |
-| `display/` | Framebuffer + touch UI (root service): status pages, Network page (Wi-Fi details, static IP/DNS, picker, SSH, Tailscale, USB modes, Bluetooth, IR remote) |
-| `bluetooth/` | `bt-agent.service`: pairing agent so PCs can pair without a prompt on the phone |
+| `display/` | Framebuffer + touch UI (root service): status pages, Network page (Wi-Fi details, static IP/DNS, picker, saved networks/forget, SSH, Tailscale, USB modes, Bluetooth with pairing popup, IR remote), read-only Files browser on the Power tab |
+| `bluetooth/` | `bt-agent.service`: headless auto-accept agent (only without the display; the display has its own pairing popup) |
 | `dashboard/` | Web dashboard (user service, port 8090): CPU/GPU/battery/thermals/services/processes |
 | `charging/` | `pmi632_chg` kernel module (charge on/off, USB suspend) + `chargectl.py` that holds the battery near 50 % |
 | `thermal-guard/` | Powers the phone off on sustained overheating |
@@ -17,7 +17,7 @@ Tested on kernel `linux-nura-qcom-sm61x5` 7.2.3, booting slot b. No warranty: ba
 
 | For | apk packages |
 |---|---|
-| `display/` | `python3 py3-pillow font-opensans font-droid networkmanager-cli bluez bluez-deprecated bluez-tools v4l-utils iputils` |
+| `display/` | `python3 py3-pillow font-opensans font-droid networkmanager-cli bluez bluez-deprecated bluez-tools v4l-utils iputils py3-dbus-fast` |
 | `dashboard/` | `python3` (stdlib only); optional `docker` (containers page), `tailscale` |
 | `charging/` | `clang lld llvm make kmod` + a kernel source tree matching the running kernel (`KDIR=`, built with `LLVM=1`) |
 | `thermal-guard/` | `python3`, `openssh-client` only for the optional notify |
@@ -65,7 +65,9 @@ laurel uses `deviceinfo_append_dtb=true`, so the kernel in boot.img is `vmlinuz`
 - The controller has no address in OTP, so the dts sets `local-bd-address`. Change it to your own
   (locally administered, bytes reversed in the dts).
 - `apk add bluez bluez-deprecated bluez-btmgmt bluez-tools && systemctl enable --now bluetooth`
-- `bluetooth/bt-agent.service` → `/etc/systemd/system/`, `systemctl enable --now bt-agent` (auto-accepts pairing).
+- The display registers a BlueZ agent (DisplayYesNo, needs `py3-dbus-fast`): pairing shows the code with Reject/Pair
+  on screen, 30 s timeout. Long-press a paired device to forget it. Without the display, use
+  `bluetooth/bt-agent.service` instead (auto-accepts).
   Set `PairableTimeout = 180` in `/etc/bluetooth/main.conf`; the display's Visible toggle makes the phone
   discoverable + pairable for that window.
 
@@ -73,6 +75,11 @@ laurel uses `deviceinfo_append_dtb=true`, so the kernel in boot.img is `vmlinuz`
 
 `ir-spi-led` on `spi@4a80000`, needs the GPI DMA controller `dma-controller@4a00000` enabled.
 Test: `apk add v4l-utils; ir-ctl -d /dev/lirc0 -S nec:0x0408` (LG TV power).
+
+## microSD
+
+The slot works (SDHCI `4784000.mmc`, UHS-I SDR104). fstab: `UUID=<uuid> /mnt/sd vfat rw,noatime,nofail,uid=1000,gid=1000,umask=022,x-systemd.device-timeout=5s 0 0`.
+The display's Storage tile shows the SD free space when mounted.
 
 ## Services
 

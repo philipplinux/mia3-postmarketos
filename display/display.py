@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Mi A3 display: short power presses cycle views; a 3-second hold powers off cleanly."""
 import argparse
+import asyncio
 import ctypes
 from concurrent.futures import ThreadPoolExecutor
 import fcntl
@@ -18,12 +19,19 @@ import re
 import struct
 import subprocess
 import textwrap
+import threading
 import time
 import urllib.error
 import urllib.request
 import datetime as dt
 
 from PIL import Image, ImageDraw, ImageFont
+try:
+    from dbus_fast import BusType, DBusError, Message, Variant
+    from dbus_fast.aio import MessageBus
+    from dbus_fast.service import ServiceInterface, method
+except ImportError:         # pairing popup off; apk add py3-dbus-fast
+    MessageBus = None
 
 BG = '#090c11'
 PANEL = '#111720'
@@ -126,7 +134,7 @@ def render(data, stale=False):
     gpu_value = 'Unavailable' if not gpu.get('available') else 'Sleeping' if state == 'suspended' else fmt(load,0,'%') if load is not None else 'n/a'
     metrics = [(16, 367, 'CPU · whole device', fmt(cpu.get('percent'),1,'%'), f"{cpu.get('logical_cores', '—')} logical cores", cpu.get('percent')),
                (275, 367, 'Memory', gib(memory.get('used_bytes')), f"of {gib(memory.get('total_bytes'))}", memory.get('used_percent')),
-               (16, 680, 'Storage', gib(storage.get('used_bytes')), f"{gib(storage.get('free_bytes'))} free", storage.get('used_percent')),
+               (16, 680, 'Storage', gib(storage.get('used_bytes')), f"{gib(storage.get('free_bytes'))} free" + sd_free(), storage.get('used_percent')),
                (275, 680, gpu.get('model') or 'GPU', gpu_value, 'GPU load' if load is not None else 'No load counter', load)]
     for x,y,label,value,sub,percent in metrics:
         card(x,y,249,112)
@@ -199,6 +207,9 @@ CONFIRM_TEXT = {'restart': ('Restart', 'The container will be restarted'), 'paus
                 'kill': ('Force kill', 'Sends SIGKILL; unsaved data is lost'),
                 'ssh_off': ('Turn off', 'Remote logins over SSH stop'),
                 'ts_off': ('Turn off', 'Remote access over Tailscale stops'),
+                'forget_wifi': ('Forget', 'Deletes the saved password'),
+                'forget_wifi_active': ('Forget', 'Wi-Fi disconnects; the phone may go offline'),
+                'forget_bt': ('Forget', 'Unpairs it; pair again to reconnect'),
                 'reboot': ('Reboot', 'The phone restarts'), 'poweroff': ('Shut down', 'Turn it back on with the power button')}
 POWER_BTNS = (('reboot', (30, 1620, 520, 1820)), ('poweroff', (560, 1620, 1050, 1820)))
 LIST_TOP = 150
@@ -212,8 +223,14 @@ RESTART_BTN = (570, 1130, 950, 1260)
 BACK_BTN = (30, 30, 250, 130)
 WIFI_CARD = (30, 170, 1050, 690)        # Network page: Wi-Fi card opens the details page
 NET_ROWS = (('ssh', 'SSH'), ('tailscale', 'Tailscale'), ('usb', 'USB'), ('bluetooth', 'Bluetooth'), ('ir', 'IR remote'))
-IPCFG_BTN = (30, 1170, 1050, 1310)      # Wi-Fi details: IP & DNS settings
-CHANGE_BTN = (30, 1340, 1050, 1480)     # Wi-Fi details: open the network picker
+IPCFG_BTN = (30, 1070, 1050, 1190)      # Wi-Fi details: IP & DNS settings
+SAVED_BTN = (30, 1210, 1050, 1330)      # Wi-Fi details: saved networks (forget)
+CHANGE_BTN = (30, 1350, 1050, 1470)     # Wi-Fi details: open the network picker
+FILES_BTN = (30, 1860, 1050, 2020)      # Power tab: file browser (read-only)
+HOME_DIR = '/home/philipp'
+FILE_TOP, FILE_ROW, FILE_LINE = 210, 120, 44
+FILES_MAX, FILE_PEEK = 500, 65536
+NO_PREVIEW = ('/proc', '/sys', '/dev')  # reads there can block or hang the kernel (debugfs regmaps)
 METHOD_BTN = (30, 170, 1050, 290)
 IP_FIELDS = (('addr', 'Address / prefix', 'e.g. 10.0.0.50/24'), ('gw', 'Gateway', 'e.g. 10.0.0.1'),
              ('dns', 'DNS servers', 'empty = from router; comma between servers'))
@@ -525,13 +542,183 @@ def ip_apply(con, method, addr, gw, dns):
 
 
 def ir_send(proto, code, label='button'):
-    ok, msg = sh('ir-ctl', '-d', IR, *['-S', f'{proto}:{code:#x}'] * (3 if proto.startswith('sony') else 1), timeout=5)
+    sony = proto.startswith('sony')
+    ok, msg = sh('ir-ctl', '-d', IR, *(('-g', '25000') if sony else ()), *['-S', f'{proto}:{code:#x}'] * (4 if sony else 1),
+                 timeout=5)
     return ok, f'Sent {label}' if ok else (msg.splitlines() or ['IR failed'])[-1][:80]
 
 
 def ir_all_off():
     sent = [b for b, proto, codes in IR_BRANDS if ir_send(proto, codes['Power'])[0]]
     return bool(sent), f"Power sent: {', '.join(sent)}" if sent else 'IR failed'
+
+
+def parse_saved(out):
+    """`nmcli -t -f NAME,TYPE,DEVICE con show` -> saved Wi-Fi profiles, active first."""
+    rows = []
+    for line in out.splitlines():
+        name, _, rest = line.replace('\\:', '\0').partition(':')
+        typ, _, dev = rest.partition(':')
+        if typ == '802-11-wireless':
+            rows.append({'name': name.replace('\0', ':'), 'active': bool(dev)})
+    return sorted(rows, key=lambda r: (not r['active'], r['name'].lower()))
+
+
+def wifi_saved():
+    return parse_saved(nmcli('-t', '-f', 'NAME,TYPE,DEVICE', 'con', 'show')[1])
+
+
+def wifi_forget(name):
+    ok, msg = nmcli('con', 'delete', 'id', name)
+    return ok, f'Forgot {name}' if ok else (msg.splitlines() or ['failed'])[-1][:80], wifi_saved()
+
+
+def bt_forget(addr, name):
+    ok, msg = sh('bluetoothctl', 'remove', addr, timeout=10)
+    ok = ok and 'Failed' not in msg and 'not available' not in msg
+    return ok, f'Forgot {name}' if ok else f'Forget {name} failed', bt_list()
+
+
+def list_dir(path):
+    """Folders first, then files; stat follows symlinks. Capped at FILES_MAX entries."""
+    ents = []
+    with os.scandir(path) as it:
+        for e in it:
+            try:
+                st, isdir = e.stat(), e.is_dir()
+            except OSError:
+                st, isdir = None, False
+            ents.append({'name': e.name, 'dir': isdir, 'size': st and st.st_size, 'mtime': st and st.st_mtime})
+            if len(ents) >= FILES_MAX:
+                break
+    return sorted(ents, key=lambda e: (not e['dir'], e['name'].lower()))
+
+
+def file_view(path):
+    """Read-only preview: {'img': Image} or {'lines': [...]}."""
+    if path.startswith(NO_PREVIEW) or not os.path.isfile(path):
+        return {'lines': ['No preview for kernel or device files']}
+    try:
+        with Image.open(path) as im:
+            im.thumbnail((1020, 1900))
+            return {'img': im.convert('RGB')}
+    except Exception:
+        pass
+    try:
+        with open(path, 'rb') as f:
+            raw = f.read(FILE_PEEK)
+    except OSError as exc:
+        return {'lines': [exc.strerror or 'Cannot read']}
+    if b'\0' in raw:
+        return {'lines': [f'Binary file, {os.path.getsize(path):,} bytes']}
+    lines = raw.decode('utf-8', 'replace').expandtabs(4).splitlines() or ['(empty)']
+    return {'lines': lines + (['…'] if len(raw) == FILE_PEEK else [])}
+
+
+def sd_free(path='/mnt/sd'):
+    """' · SD x free' when the microSD card is mounted, else ''."""
+    if not os.path.ismount(path):
+        return ''
+    st = os.statvfs(path)
+    return f' · SD {st.f_bavail * st.f_frsize / 2**30:.1f} GiB'
+
+
+def fmt_size(n):
+    return '—' if n is None else f'{n} B' if n < 1024 else next(
+        f'{n / 1024 ** i:.1f} {u}' for i, u in ((1, 'KiB'), (2, 'MiB'), (3, 'GiB'), (4, 'TiB')) if n < 1024 ** (i + 1) or u == 'TiB')
+
+
+class PairAgent:
+    """BlueZ agent (DisplayYesNo): pairing/connection requests become a yes/no popup; the UI polls .req."""
+    PATH = '/mia3/agent'
+
+    def __init__(self):
+        self.req, self.loop = None, None
+        threading.Thread(target=self.run, daemon=True).start()
+
+    def run(self):
+        try:
+            asyncio.run(self.serve())
+        except Exception:
+            logging.exception('Bluetooth agent stopped')
+
+    def answer(self, yes):
+        req, self.req = self.req, None
+        if req and self.loop:
+            self.loop.call_soon_threadsafe(lambda: req['fut'].done() or req['fut'].set_result(yes))
+
+    async def ask(self, bus, device, kind, code=None):
+        reply = await bus.call(Message(destination='org.bluez', path=device, member='Get', signature='ss',
+                                       interface='org.freedesktop.DBus.Properties', body=['org.bluez.Device1', 'Alias']))
+        name = reply.body[0].value if reply.body else device.rsplit('dev_', 1)[-1].replace('_', ':')
+        fut = asyncio.get_running_loop().create_future()
+        self.req = {'name': name, 'kind': kind, 'code': code, 'fut': fut}
+        try:
+            yes = await asyncio.wait_for(fut, 30)
+        except asyncio.TimeoutError:
+            yes = False
+        finally:
+            if self.req and self.req['fut'] is fut:
+                self.req = None
+        logging.info('Bluetooth %s %s: %s', kind, name, 'accepted' if yes else 'rejected')
+        if not yes:
+            raise DBusError('org.bluez.Error.Rejected', 'Rejected on the phone')
+        await bus.call(Message(destination='org.bluez', path=device, member='Set', signature='ssv',
+                               interface='org.freedesktop.DBus.Properties',
+                               body=['org.bluez.Device1', 'Trusted', Variant('b', True)]))
+
+    async def serve(self):
+        pa = self
+
+        class Agent(ServiceInterface):
+            def __init__(self):
+                super().__init__('org.bluez.Agent1')
+
+            @method()
+            def Release(self):
+                pass
+
+            @method()
+            def Cancel(self):
+                pa.answer(False)
+
+            @method()
+            async def RequestConfirmation(self, device: 'o', passkey: 'u'):
+                await pa.ask(bus, device, 'confirm', f'{passkey:06d}')
+
+            @method()
+            async def RequestAuthorization(self, device: 'o'):
+                await pa.ask(bus, device, 'pair')
+
+            @method()
+            async def AuthorizeService(self, device: 'o', uuid: 's'):
+                await pa.ask(bus, device, 'connect')
+
+            @method()
+            def DisplayPasskey(self, device: 'o', passkey: 'u', entered: 'q'):
+                pass
+
+            @method()
+            def DisplayPinCode(self, device: 'o', pincode: 's'):
+                pass
+
+            @method()
+            def RequestPinCode(self, device: 'o') -> 's':
+                raise DBusError('org.bluez.Error.Rejected', 'Legacy PIN pairing not supported')
+
+            @method()
+            def RequestPasskey(self, device: 'o') -> 'u':
+                raise DBusError('org.bluez.Error.Rejected', 'Passkey entry not supported')
+
+        bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
+        self.loop = asyncio.get_running_loop()
+        bus.export(self.PATH, Agent())
+        while True:     # re-register after bluetoothd restarts; AlreadyExists replies are harmless
+            for member, sig, body in (('RegisterAgent', 'os', [self.PATH, 'DisplayYesNo']),
+                                      ('RequestDefaultAgent', 'o', [self.PATH])):
+                await bus.call(Message(destination='org.bluez', path='/org/bluez', interface='org.bluez.AgentManager1',
+                                       member=member, signature=sig, body=body))
+            await asyncio.sleep(30)
 
 
 def bt_vis(on):
@@ -624,12 +811,62 @@ def page_wifiinfo(w, data):
                 ('DNS', ', '.join(i.get('IP4.DNS') or ['—'])), ('Band', f'{link[0]} · ch {link[1]}'),
                 ('Link rate', link[2]), ('Security', link[3] or 'Open'), ('MAC', first('GENERAL.HWADDR')),
                 ('IPv6', first('IP6.ADDRESS')))
-        card(30, 170, 1020, 970)
+        card(30, 170, 1020, 880)
         for n, (k, v) in enumerate(rows):
-            text(60, 200 + n * 92, k, 34, MUTED)
-            text(1020, 196 + n * 92, v, 38, anchor='ra', max_width=700)
+            text(60, 196 + n * 84, k, 34, MUTED)
+            text(1020, 192 + n * 84, v, 38, anchor='ra', max_width=700)
     btn(text, card, IPCFG_BTN, 'IP & DNS settings', CYAN, 48)
+    btn(text, card, SAVED_BTN, 'Saved networks', CYAN, 48)
     btn(text, card, CHANGE_BTN, 'Change network', CYAN, 48)
+    return image
+
+
+def page_saved(w, data):
+    image = Image.new('RGB', IMG, BG)
+    d, text, card, bar = tools(image)
+    back_btn(text, card)
+    text(290, 48, 'Saved Wi-Fi', 56, bold=True)
+    if w['devs'] is None:
+        text(540, 600, 'Loading…', 48, MUTED, anchor='mm')
+    elif not w['devs']:
+        text(540, 600, 'No saved networks', 48, MUTED, anchor='mm')
+    for i, n in enumerate((w['devs'] or [])[:(TAB_Y - WIFI_TOP) // WIFI_ROW]):
+        y = WIFI_TOP + i * WIFI_ROW
+        card(30, y, 1020, WIFI_ROW - 15, outline=GREEN if n['active'] else LINE)
+        text(60, y + 25, n['name'], 46, bold=n['active'], max_width=940)
+        text(60, y + 85, 'Connected · tap to forget' if n['active'] else 'Tap to forget', 30,
+             GREEN if n['active'] else MUTED)
+    return image
+
+
+def page_files(w, data):
+    image = Image.new('RGB', IMG, BG)
+    d, text, card, bar = tools(image)
+    back_btn(text, card)
+    v, path = w['view'], w['path']
+    text(290, 48, os.path.basename(v['name'] if v else path) or '/', 56, bold=True, max_width=760)
+    text(40, 150, ('…' + path[-48:]) if len(path) > 49 else path, 30, MUTED, mono=True)
+    clip = Image.new('RGB', (IMG[0], round((TAB_Y - FILE_TOP) * P)), BG)
+    cd, ctext, ccard, _ = tools(clip)
+    off = FILE_TOP + w['scroll']
+    if v and 'img' in v:
+        clip.paste(v['img'].resize((round(v['img'].width * P), round(v['img'].height * P))), (round(30 * P), -round(w['scroll'] * P)))
+    elif v:
+        first = w['scroll'] // FILE_LINE
+        for n, line in enumerate(v['lines'][first:first + (TAB_Y - FILE_TOP) // FILE_LINE + 2], first):
+            ctext(40, n * FILE_LINE - w['scroll'] + 4, line or ' ', 28, mono=True, max_width=1010)
+    elif not w['ents']:
+        ctext(540, 300, 'Empty folder', 48, MUTED, anchor='mm')
+    else:
+        first = w['scroll'] // FILE_ROW
+        for n, e in enumerate(w['ents'][first:first + (TAB_Y - FILE_TOP) // FILE_ROW + 2], first):
+            y = n * FILE_ROW - w['scroll']
+            ccard(30, y, 1020, FILE_ROW - 12)
+            ctext(60, y + 16, e['name'] + ('/' if e['dir'] else ''), 42, CYAN if e['dir'] else TEXT, max_width=700)
+            when = dt.datetime.fromtimestamp(e['mtime']).strftime('%Y-%m-%d %H:%M') if e['mtime'] else ''
+            ctext(60, y + 70, when, 26, MUTED)
+            ctext(1020, y + 30, '›' if e['dir'] else fmt_size(e['size']), 36, MUTED, anchor='ra')
+    image.paste(clip, (0, round(FILE_TOP * P)))
     return image
 
 
@@ -691,8 +928,8 @@ def page_bt(w, data):
         y = BT_TOP + i * WIFI_ROW
         card(30, y, 1020, WIFI_ROW - 15, outline=GREEN if dev['connected'] else LINE)
         text(60, y + 25, dev['name'], 46, bold=dev['connected'], max_width=720, color=TEXT if dev['named'] else MUTED)
-        tag = 'Connected · tap to disconnect' if dev['connected'] else 'Paired · tap to connect' if dev['paired'] \
-            else 'Tap to pair'
+        tag = 'Connected · tap to disconnect, hold to forget' if dev['connected'] else \
+            'Paired · tap to connect, hold to forget' if dev['paired'] else 'Tap to pair'
         text(60, y + 85, tag, 30, GREEN if dev['connected'] else MUTED)
         text(1020, y + 30, dev['addr'], 28, MUTED, anchor='ra', mono=True)
     return image
@@ -843,6 +1080,7 @@ class Ui:
         self.toast = ('', 0.0)
         self.wifi = None       # picker: {'nets', 'sel', 'pw', 'mode', 'show'}
         self.sub = None        # Network sub-page: {'kind': 'ssh' | 'usb' | 'bt', ...}
+        self.pair = None       # Bluetooth agent request: {'name', 'kind', 'code'}
 
     def tick(self, now):
         changed = False
@@ -869,6 +1107,11 @@ class Ui:
     def on_gesture(self, g, data, now):
         """Apply one gesture; returns effects for the main loop: ('blank',), ('detail', n), ('act', act, arg)."""
         kind = g[0]
+        if self.pair:
+            if kind == 'tap' and (hit(CANCEL_BTN, g[1], g[2]) or hit(RESTART_BTN, g[1], g[2])):
+                self.pair = None
+                return [('pair', hit(RESTART_BTN, g[1], g[2]))]
+            return []
         if self.confirm:
             if kind == 'tap':
                 act, arg = self.confirm[:2]
@@ -876,6 +1119,9 @@ class Ui:
                     self.confirm = None
                 elif hit(RESTART_BTN, g[1], g[2]):
                     self.confirm = None
+                    if act.startswith('forget'):
+                        self.toast = ('Forgetting…', float('inf'))
+                        return [('wifi', *arg)]
                     return [('act', act, arg)]
             return []
         if self.wifi is not None:
@@ -943,6 +1189,9 @@ class Ui:
             elif self.page == 3 and hit(WIFI_CARD, x, y):
                 self.sub = {'kind': 'wifi', 'info': None}
                 return [('wifi', wifi_info)]
+            elif self.page == len(TABS) - 1 and hit(FILES_BTN, x, y):
+                self.sub = {'kind': 'files', 'path': '/', 'ents': [], 'scroll': 0, 'view': None}
+                self.open_dir(HOME_DIR if os.path.isdir(HOME_DIR) else '/')
             elif self.page == len(TABS) - 1:
                 for act, box in POWER_BTNS:
                     if hit(box, x, y):
@@ -986,20 +1235,74 @@ class Ui:
         kb_type(w, next((k for k, box in kb_keys(w['mode']) if hit(box, x, y)), None))
         return []
 
+    def open_dir(self, path):
+        try:
+            self.sub.update(path=path, ents=list_dir(path), scroll=0, view=None)
+        except OSError as exc:
+            self.toast = (f"{os.path.basename(path) or '/'}: {exc.strerror or 'cannot open'}", time.monotonic() + 4)
+
+    def on_files(self, g, x, y):
+        w = self.sub
+        if w['view'] is None and y >= FILE_TOP:
+            i = int((y - FILE_TOP + w['scroll']) // FILE_ROW)
+            if 0 <= i < len(w['ents']):
+                e = w['ents'][i]
+                full = os.path.join(w['path'], e['name'])
+                if e['dir']:
+                    self.open_dir(full)
+                else:
+                    w.update(view={'name': full, **file_view(full)}, scroll=0)
+        return []
+
     def on_sub(self, g, data, now):
         """SSH / USB / Bluetooth sub-pages of the Network tab."""
         w, kind = self.sub, g[0]
         if (kind == 'tap' and hit(BACK_BTN, g[1], g[2])) or (kind == 'swipe' and g[1] == 'right'):
             if w['kind'] == 'ipcfg':
                 self.sub = {'kind': 'wifi', 'info': w['info']}
+            elif w['kind'] == 'saved':                       # a forgotten network can change the details
+                self.sub = {'kind': 'wifi', 'info': None}
+                return [('wifi', wifi_info)]
+            elif w['kind'] == 'files' and w['view']:
+                w.update(view=None, scroll=w.get('dir_scroll', 0))
+            elif w['kind'] == 'files' and w['path'] != '/':
+                self.open_dir(os.path.dirname(w['path'].rstrip('/')) or '/')
             elif w.get('edit'):
                 w['edit'] = False
             else:
                 self.sub = None
             return []
+        if w['kind'] == 'files' and kind in ('scrollstart', 'scroll'):
+            if kind == 'scrollstart':
+                w['base'] = w['scroll']
+                return []
+            v = w['view']
+            if v and 'img' in v:
+                total = v['img'].height
+            else:
+                total = len(v['lines']) * FILE_LINE if v else len(w['ents']) * FILE_ROW
+            w['scroll'] = int(min(max(0, total - (TAB_Y - FILE_TOP) + 40), max(0, w['base'] - g[1])))
+            return []
+        if kind == 'long' and w['kind'] == 'bt' and not w.get('edit'):
+            devs, i = w['devs'] or [], int((g[2] - BT_TOP) // WIFI_ROW) if g[2] >= BT_TOP else -1
+            if 0 <= i < len(devs) and devs[i]['paired']:
+                dev = devs[i]
+                self.confirm = ('forget_bt', (bt_forget, dev['addr'], dev['name']), dev['name'], now + CONFIRM_S)
+            return []
         if kind != 'tap':
             return []
         x, y = g[1], g[2]
+        if w['kind'] == 'files':
+            if w['view'] is None:
+                w['dir_scroll'] = w['scroll']
+            return self.on_files(g, x, y)
+        if w['kind'] == 'saved':
+            nets, i = w['devs'] or [], int((y - WIFI_TOP) // WIFI_ROW) if y >= WIFI_TOP else -1
+            if 0 <= i < len(nets):
+                n = nets[i]
+                self.confirm = ('forget_wifi_active' if n['active'] else 'forget_wifi', (wifi_forget, n['name']),
+                                n['name'], now + CONFIRM_S)
+            return []
         if w['kind'] == 'ssh':
             if hit(SSH_TOGGLE, x, y):
                 if ((data.get('services') or {}).get('ssh') or {}).get('up'):
@@ -1026,6 +1329,9 @@ class Ui:
             if hit(CHANGE_BTN, x, y):
                 self.wifi = {'nets': None, 'sel': None, 'pw': '', 'mode': 'abc', 'show': False}
                 return [('wifi', wifi_scan)]
+            if hit(SAVED_BTN, x, y):
+                self.sub = {'kind': 'saved', 'devs': None}
+                return [('wifi', wifi_saved)]
             if hit(IPCFG_BTN, x, y) and i and i.get('con'):
                 first = lambda *ks: next((i[k][0] for k in ks if i.get(k)), '')
                 method = 'manual' if first('ipv4.method') == 'manual' else 'auto'
@@ -1090,7 +1396,7 @@ class Ui:
             image = page_wifi(self.wifi)
         elif self.sub is not None:
             image = {'ssh': page_ssh, 'usb': page_usb, 'bt': page_bt, 'wifi': page_wifiinfo, 'ipcfg': page_ipcfg,
-                     'ir': page_ir}[self.sub['kind']](self.sub, data)
+                     'ir': page_ir, 'saved': page_saved, 'files': page_files}[self.sub['kind']](self.sub, data)
         elif self.detail:
             image = page_detail(self.detail, self.info, data)
         elif self.pdetail:
@@ -1122,6 +1428,21 @@ class Ui:
             card(*RESTART_BTN[:2], RESTART_BTN[2] - RESTART_BTN[0], RESTART_BTN[3] - RESTART_BTN[1],
                  fill=AMBER, outline=AMBER)
             text(760, 1195, verb, 44, BG, bold=True, anchor='mm')
+        if self.pair:
+            p = self.pair
+            image = Image.blend(image, Image.new('RGB', image.size, 'black'), 0.75)
+            d, text, card, bar = tools(image)
+            card(90, 760, 900, 560, fill=PANEL, outline=CYAN)
+            text(540, 840, 'Allow connection?' if p['kind'] == 'connect' else 'Pair with', 40, MUTED, anchor='mm')
+            text(540, 910, p['name'], 52, bold=True, anchor='mm', max_width=820)
+            if p['code']:
+                text(540, 1010, p['code'], 84, CYAN, bold=True, anchor='mm', mono=True)
+                text(540, 1085, 'Same code on the other device?', 30, MUTED, anchor='mm')
+            card(*CANCEL_BTN[:2], CANCEL_BTN[2] - CANCEL_BTN[0], CANCEL_BTN[3] - CANCEL_BTN[1])
+            text(320, 1195, 'Reject', 44, anchor='mm')
+            card(*RESTART_BTN[:2], RESTART_BTN[2] - RESTART_BTN[0], RESTART_BTN[3] - RESTART_BTN[1],
+                 fill=GREEN, outline=GREEN)
+            text(760, 1195, 'Allow' if p['kind'] == 'connect' else 'Pair', 44, BG, bold=True, anchor='mm')
         return image
 
 
@@ -1307,6 +1628,7 @@ def page_battery(data, stale):
     for act, (x0, y0, x1, y1) in POWER_BTNS:
         card(x0, y0, x1 - x0, y1 - y0, outline=AMBER if act == 'poweroff' else CYAN)
         text((x0 + x1) // 2, (y0 + y1) // 2, CONFIRM_TEXT[act][0], 56, bold=True, anchor='mm')
+    btn(text, card, FILES_BTN, 'Files', CYAN, 52)
     return image
 
 
@@ -1491,7 +1813,7 @@ def selftest():
     assert info['IP4.DNS'] == ['1.1.1.1', '9.9.9.9'] and 'ipv4.dns' not in info
     ui.sub['info'] = {**info, 'con': 'home', 'link': ['5180 MHz', '36', '1170 Mbit/s', 'WPA2']}
     ui.render(data, False, 0)
-    ui.on_gesture(('tap', 500, 1240), data, 0)                  # IP & DNS settings
+    ui.on_gesture(('tap', 500, 1130), data, 0)                  # IP & DNS settings
     assert ui.sub['kind'] == 'ipcfg' and ui.sub['addr'] == '10.0.0.50/24' and ui.sub['field'] == 'addr'
     ui.render(data, False, 0)
     ui.on_gesture(('tap', 500, IP_BOXES[2][1][1] + 20), data, 0)  # DNS field
@@ -1578,6 +1900,59 @@ def selftest():
     assert ui.on_gesture(('tap', 200, 400), ndata, 9) == [('wifi', ir_send, 'nec', 0x0408, 'LG Power')]
     ui.on_gesture(('tap', 500, 230), ndata, 9)
     assert ui.on_gesture(('tap', 800, 1050), ndata, 9) == [('wifi', ir_send, 'necx', 0x070710, 'Samsung Ch -')]
+    assert ir_send.__code__.co_consts  # sony gap is in ir_send
+    assert parse_saved('home:802-11-wireless:wlan0\ncafe\\:5G:802-11-wireless:\nlo:loopback:lo\n') == [
+        {'name': 'home', 'active': True}, {'name': 'cafe:5G', 'active': False}]
+    ui = Ui()
+    ui.sub = {'kind': 'wifi', 'info': None}
+    assert ui.on_gesture(('tap', 500, 1270), data, 0) == [('wifi', wifi_saved)] and ui.sub == {'kind': 'saved', 'devs': None}
+    ui.sub['devs'] = [{'name': 'home', 'active': True}, {'name': 'cafe', 'active': False}]
+    ui.render(data, False, 0)
+    ui.on_gesture(('tap', 500, WIFI_TOP + WIFI_ROW + 5), data, 0)
+    assert ui.confirm[:3] == ('forget_wifi', (wifi_forget, 'cafe'), 'cafe')
+    ui.render(data, False, 0)
+    assert ui.on_gesture(('tap', 760, 1200), data, 0) == [('wifi', wifi_forget, 'cafe')]
+    assert ui.on_gesture(('tap', 100, 80), data, 0) == [('wifi', wifi_info)] and ui.sub['kind'] == 'wifi'
+    ui.sub = {'kind': 'bt', 'devs': [{'addr': 'AA', 'name': 'PC', 'paired': True, 'connected': False, 'named': True}],
+              'edit': False}
+    ui.on_gesture(('long', 500, BT_TOP + 5), data, 0)
+    assert ui.confirm[:2] == ('forget_bt', (bt_forget, 'AA', 'PC'))
+    assert ui.on_gesture(('tap', 760, 1200), data, 0) == [('wifi', bt_forget, 'AA', 'PC')]
+    ui.pair = {'name': 'PC', 'kind': 'confirm', 'code': '123456'}
+    ui.render(data, False, 0)
+    assert ui.on_gesture(('tap', 500, 400), data, 0) == [] and ui.pair
+    assert ui.on_gesture(('tap', 760, 1200), data, 0) == [('pair', True)] and ui.pair is None
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        os.mkdir(f'{tmp}/sub')
+        Path(f'{tmp}/a.txt').write_text('hello\tworld\n' * 100)
+        Path(f'{tmp}/b.bin').write_bytes(b'\0\1')
+        Image.new('RGB', (40, 20), 'red').save(f'{tmp}/c.png')
+        assert [e['name'] for e in list_dir(tmp)] == ['sub', 'a.txt', 'b.bin', 'c.png']
+        assert file_view(f'{tmp}/a.txt')['lines'][0] == 'hello   world' and 'Binary' in file_view(f'{tmp}/b.bin')['lines'][0]
+        assert file_view(f'{tmp}/c.png')['img'].size == (40, 20) and 'No preview' in file_view('/proc/kmsg')['lines'][0]
+        ui = Ui()
+        ui.page = len(TABS) - 1
+        ui.render(data, False, 0)
+        ui.on_gesture(('tap', 500, 1900), data, 0)
+        assert ui.sub['kind'] == 'files'
+        ui.open_dir(tmp)
+        ui.render(data, False, 0)
+        ui.on_gesture(('tap', 500, FILE_TOP + 5), data, 0)               # sub/
+        assert ui.sub['path'] == f'{tmp}/sub'
+        ui.on_gesture(('tap', 100, 80), data, 0)                          # back up
+        assert ui.sub['path'] == tmp
+        ui.on_gesture(('tap', 500, FILE_TOP + FILE_ROW + 5), data, 0)    # a.txt
+        assert ui.sub['view']['lines'][0].startswith('hello')
+        ui.on_gesture(('scrollstart',), data, 0)
+        ui.on_gesture(('scroll', -300), data, 0)
+        assert ui.sub['scroll'] == 300
+        ui.render(data, False, 0)
+        ui.on_gesture(('tap', 100, 80), data, 0)
+        assert ui.sub['view'] is None
+        ui.on_gesture(('tap', 500, FILE_TOP + 3 * FILE_ROW + 5), data, 0)
+        ui.render(data, False, 0)
+    assert fmt_size(5) == '5 B' and fmt_size(2048) == '2.0 KiB' and fmt_size(3 << 30) == '3.0 GiB'
     print('selftest ok')
 
 
@@ -2007,6 +2382,8 @@ def main():
     signal.signal(signal.SIGUSR2, request_action)
     latest = {}
     ui = Ui()
+    agent = PairAgent() if MessageBus else None
+    shown_req = None
     is_stale = True
     ui_dirty = False
     last_draw = 0.0
@@ -2030,6 +2407,11 @@ def main():
     try:
         while not stopped:
             ready = select.select([event_fd] + ([touch_fd] if touch else []), [], [], 0.03 if ui_dirty else 0.1)[0]
+            if agent and agent.req is not shown_req:                 # pairing request: pop up, wake the screen
+                shown_req = ui.pair = agent.req
+                ui_dirty = True
+                if ui.pair and display.view != 'dashboard' and action is None:
+                    display.show(compose())
             if touch_fd in ready:
                 try:
                     raw = os.read(touch_fd, event.size * 64)
@@ -2050,6 +2432,8 @@ def main():
                                 display.hide()
                             elif effect[0] == 'detail':
                                 next_detail = 0.0
+                            elif effect[0] == 'pair' and agent:
+                                agent.answer(effect[1])
                             elif effect[0] == 'wifi' and wifi_future is None:
                                 logging.info('Touch: job %s', effect[1].__name__)    # never log args (passwords)
                                 wifi_future = dpool.submit(*effect[1:])

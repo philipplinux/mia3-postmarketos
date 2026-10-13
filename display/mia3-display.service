@@ -12,7 +12,7 @@ RestartSec=5
 TimeoutStopSec=10
 NoNewPrivileges=true
 ProtectSystem=strict
-ProtectHome=true
+ProtectHome=read-only
 ReadWritePaths=/sys/class/backlight/5e94000.dsi.0 /sys/kernel/config
 # /etc: chpasswd (SSH page "Set password") rewrites /etc/shadow
 ReadWritePaths=-/etc
