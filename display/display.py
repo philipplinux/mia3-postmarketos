@@ -235,6 +235,7 @@ POWER_BTNS = (('reboot', (30, 1620, 520, 1820)), ('poweroff', (560, 1620, 1050, 
 LIST_TOP = 150
 LIST_BOTTOM = TAB_Y - 10
 DRAG_PX = 40
+VOL_STEP = 600        # volume keys scroll lists by this many px
 SWIPE_PX = 250
 LONG_S = 0.8
 CONFIRM_S = 10.0
@@ -2660,6 +2661,8 @@ def main():
             display.close()
             raise
         logging.info('Exclusive power-key input acquired')
+    vol_fds = [os.open('/dev/input/' + p.name, os.O_RDONLY | os.O_NONBLOCK) for p in Path('/sys/class/input').glob('event*')
+               if (p / 'device/name').read_text().strip() in ('pm8941_resin', 'gpio-keys')]   # volume down / up
     touch_fd = touch = None
     for p in Path('/sys/class/input').glob('event*'):
         if (p/'device/name').read_text().strip() == args.touch_name:
@@ -2753,7 +2756,16 @@ def main():
     logging.info('Ready: short power presses cycle views; hold ignored (Power tab reboots)')
     try:
         while not stopped:
-            ready = select.select([event_fd] + ([touch_fd] if touch else []), [], [], 0.03 if ui_dirty else 0.1)[0]
+            ready = select.select([event_fd] + vol_fds + ([touch_fd] if touch else []), [], [], 0.03 if ui_dirty else 0.1)[0]
+            for fd in vol_fds:
+                if fd in ready:
+                    raw = os.read(fd, event.size * 32)
+                    for offset in range(0, len(raw) - event.size + 1, event.size):
+                        _, _, kind, code, value = event.unpack_from(raw, offset)
+                        if kind == 1 and code in (114, 115) and value and display.shown and action is None:
+                            for g in (('scrollstart',), ('scroll', VOL_STEP if code == 115 else -VOL_STEP)):
+                                ui.on_gesture(g, latest, time.monotonic())   # same path as a finger drag
+                            ui_dirty = True
             if agent and agent.req is not shown_req:                 # pairing request: pop up, wake the screen
                 shown_req = ui.pair = agent.req
                 ui_dirty = True
