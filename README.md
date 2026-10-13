@@ -36,16 +36,27 @@ Tested on kernel `linux-nura-qcom-sm61x5` 7.2.3, booting slot b. No warranty: ba
 
 ## Install (one shot)
 
-On the phone, from a checkout of this repo, as the normal user (uses `sudo`):
+From the PC (kernel tree at `KDIR`, default `~/projects/mia3-kernel/linux-7.2.3-r0`; Docker; private repo checked
+out next to this one for firmware):
+
+```
+sh deploy.sh [ssh-host] [install.sh flags]    # default host mia3; NOBUILD=1 skips the module build
+```
+
+It builds `pmi632_chg`, `mia3_qg`, `mia3_adsp`, `mia3_dtbo`, `spdif_transmitter` and `mia3_tsens` in `docker run alpine:edge`
+(arm64 cross build with clang), rsyncs the repo to `~/projects/mia3-postmarketos` on the phone, copies missing firmware
+(`cp -an`, never overwrites) and runs `install.sh` there.
+
+Or on the phone, from a checkout of this repo, as the normal user (uses `sudo`):
 
 ```
 sh install.sh [--no-kernel-module] [--no-shell] [--dry-run]
 ```
 
 Idempotent. Installs the apk packages above (not `firmware/`, `pmbootstrap`, `docker`), then display (+ nft rule), dashboard
-(to `~/projects/mia3-dashboard/dashboard/`, user unit path follows `$HOME`, linger on), charging (module build needs
-`KDIR=` kernel source matching `uname -r`, skipped if missing), thermal-guard and shell (existing `~/.bashrc` saved as `.bak`).
-`--dry-run` only prints the commands. Not automated: firmware, kernel/dtb flashing, Bluetooth agent, ble.sh.
+(to `~/projects/mia3-dashboard/dashboard/`, user unit path follows `$HOME`, linger on), charging, fuel gauge, speaker and
+temperature sensors (prebuilt `.ko` from `deploy.sh`, or charging builds with `KDIR=` on the phone), thermal-guard and shell (existing `~/.bashrc` saved as `.bak`).
+`--dry-run` only prints the commands. Not automated: the q6/sm8250 audio modules, kernel/dtb flashing, Bluetooth agent, ble.sh.
 
 ## Kernel and pmaports
 
@@ -162,4 +173,7 @@ The Power page reports USB input current independently of battery current. It us
 
 With a limit enabled, chargectl charges to the selected threshold and latches hold for the current USB connection. Voltage sag does not start routine top-ups; USB input remains enabled. USB reconnection or raising the target can start a new cycle; thermal and low-battery safeguards remain. This does not physically disconnect the battery or guarantee zero battery current. Power labels battery, system (VPH), and USB input voltage separately.
 
-Audio has a bottom-speaker on/off slider that restores the previous gain. The upper-earpiece control is a disabled placeholder pending codec and routing bring-up.
+Audio has a bottom-speaker on/off slider that restores the previous gain.
+
+Not planned for now (deliberately left disabled): top earpiece and microphones (WCD937x codec + LPASS macros +
+SoundWire, all off in the kernel config) and GPS (needs a QMI LOC userspace client).

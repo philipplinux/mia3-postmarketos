@@ -38,7 +38,7 @@ say "apk packages"
 run sudo apk add python3 py3-pillow font-opensans font-droid networkmanager-cli bluez bluez-deprecated \
     bluez-tools v4l-utils iputils py3-dbus-fast font-nerd-fonts-symbols \
     openssh-client nftables
-[ "$KMOD" = 0 ] || run sudo apk add clang lld llvm make kmod
+[ "$KMOD" = 0 ] || run sudo apk add clang lld llvm make kmod dtc i2c-tools alsa-utils
 [ "$SHELLSETUP" = 0 ] || run sudo apk add bash starship fzf fd font-jetbrains-mono-nerd sway foot wvkbd grim
 
 say "display"
@@ -81,10 +81,10 @@ run systemctl --user enable --now mia3-dashboard.service
 say "charging"
 if [ "$KMOD" = 0 ]; then
     echo "skipped (--no-kernel-module)"
-elif [ ! -f "$KDIR/Makefile" ]; then
-    echo "skipped: no kernel source at KDIR=$KDIR (must match $(uname -r)); set KDIR= and rerun"
+elif [ ! -f "$R/charging/pmi632_chg.ko" ] && [ ! -f "$KDIR/Makefile" ]; then
+    echo "skipped: no prebuilt charging/pmi632_chg.ko (deploy.sh) and no kernel source at KDIR=$KDIR (must match $(uname -r))"
 else
-    run make -C "$R/charging" KDIR="$KDIR"
+    [ -f "$R/charging/pmi632_chg.ko" ] || run make -C "$R/charging" KDIR="$KDIR"
     run sudo install -D -m644 "$R/charging/pmi632_chg.ko" "/lib/modules/$(uname -r)/extra/pmi632_chg.ko"
     run sudo depmod -a
     run sudo install -D -m755 "$R/charging/chargectl.py" /usr/local/lib/chargectl/chargectl.py
@@ -103,6 +103,30 @@ else
     run sudo install -D -m644 "$R/battery/mia3-qg.service" /etc/systemd/system/mia3-qg.service
     run sudo systemctl daemon-reload
     run sudo systemctl enable mia3-qg.service
+fi
+
+say "speaker + temperature sensors"
+X=/lib/modules/$(uname -r)/extra
+if [ "$KMOD" = 0 ] || [ ! -f "$R/audio/mia3_dtbo.ko" ] || [ ! -f "$R/thermal-sensors/mia3_tsens.ko" ]; then
+    echo "skipped: build the audio/ and thermal-sensors/ modules first (deploy.sh)"
+else
+    for o in audio/mia3-adsp audio/mia3-apr audio/mia3-speaker thermal-sensors/mia3-tsens; do
+        run sudo dtc -q -I dts -O dtb -o "/lib/firmware/${o#*/}.dtbo" "$R/$o.dts"
+    done
+    run sudo install -d "$X/mia3-tsens" /usr/local/lib/mia3-audio
+    run sudo install -m644 "$R/thermal-sensors/mia3_tsens.ko" "$R/audio/mia3_dtbo.ko" -t "$X/mia3-tsens"
+    run sudo depmod -a
+    run sudo install -m644 "$R"/audio/*.ko -t /usr/local/lib/mia3-audio
+    run sudo install -m755 "$R/audio/bringup.sh" "$R/audio/max98937-init.sh" -t /usr/local/lib/mia3-audio
+    run sudo install -D -m755 "$R/audio/mia3-chime" /usr/local/bin/mia3-chime
+    run sudo install -m644 "$R/thermal-sensors/mia3-tsens.service" "$R/audio/mia3-audio.service" -t /etc/systemd/system
+    run sudo systemctl daemon-reload
+    run sudo systemctl enable mia3-tsens.service
+    if [ -f "$X/mia3-audio/snd-soc-sm8250.ko" ]; then
+        run sudo systemctl enable mia3-audio.service
+    else
+        echo "mia3-audio not enabled: the q6/sm8250 modules are missing from $X/mia3-audio (audio/README.md 'Speaker card')"
+    fi
 fi
 
 say "thermal guard"
@@ -136,11 +160,12 @@ fi
 
 say "not automated"
 echo "- Bluetooth agent: not installed (the display has its own pairing popup); bluetooth/bt-agent.service is for display-less setups"
-echo "- Firmware: README 'Kernel and pmaports' (firmware/extract-firmware.sh, as root)"
+echo "- Firmware: deploy.sh copies it from the private repo, else README 'Kernel and pmaports' (firmware/extract-firmware.sh)"
+echo "- q6/sm8250 audio modules in /lib/modules/\$(uname -r)/extra/mia3-audio: audio/README.md 'Speaker card'"
 echo "- Kernel/dtb: README 'Boot image with the dtb' (flash from a PC with fastboot)"
 
 say "service states"
-for u in mia3-display mia3-qg chargectl thermal-guard nftables getty@tty5; do
+for u in mia3-display mia3-tsens mia3-audio mia3-qg chargectl thermal-guard nftables getty@tty5; do
     printf '%-16s %s\n' "$u" "$(systemctl is-active "$u" 2>&1 || true)"
 done
 printf '%-16s %s\n' mia3-dashboard "$(systemctl --user is-active mia3-dashboard 2>&1 || true)"

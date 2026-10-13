@@ -2407,12 +2407,6 @@ def page_perf(w, data):
                             fill=GREEN if on else LINE)
         knob_x = 930 if on else 860
         d.ellipse(((knob_x - 32) * P, 995 * P, (knob_x + 32) * P, 1075 * P), fill=TEXT)
-        card(30, 1160, 1020, 190, outline=LINE)
-        text(80, 1220, '\U000F04C3', 48, MUTED, anchor='mm', icon=True)
-        text(135, 1190, 'Top earpiece', 36, MUTED)
-        text(135, 1240, 'Unavailable · driver support pending', 30, MUTED, max_width=700)
-        card(800, 1190, 1000 - 800, 110, fill=BG, outline=LINE)
-        text(900, 1245, 'Unavailable', 27, MUTED, bold=True, anchor='mm')
     else:
         text(60, 1490, 'Tap a governor to cycle it. CPU and GPU', 30, MUTED)
         text(60, 1532, 'clock settings reset at reboot.', 30, MUTED)

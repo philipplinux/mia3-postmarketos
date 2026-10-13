@@ -28,7 +28,7 @@ Kernel gotcha: module `struct module` size depends on config, so the build tree 
 
 1. `curl -L https://codeberg.org/sm61x5-mainline/linux/archive/v7.2.3-r0.tar.gz | tar xz` (kept at `~/projects/mia3-kernel/linux-7.2.3-r0` on the PC, prepared with `modules_prepare`; the Makefile's default `KDIR`).
 2. `ssh mia3 cat /boot/config > linux/.config`, then in the tree: `make ARCH=arm64 LLVM=1 olddefconfig modules_prepare` (needs `pahole`).
-3. `make KDIR=<tree>` here. The host has no clang: it was built in `podman run alpine:edge` with `apk add clang lld llvm make flex bison openssl-dev bc perl elfutils-dev python3 diffutils linux-headers musl-dev gcc libgcc pahole`, tree mounted at `/src`.
+3. `make KDIR=<tree>` here. The host has no clang: it is built in `docker run alpine:edge` (`../deploy.sh` does this for all modules) with `apk add clang lld llvm make flex bison openssl-dev bc perl elfutils-dev python3 diffutils linux-headers musl-dev gcc libgcc pahole`, tree mounted at `/src`.
 4. Phone has `dtc`: compile the `.dts` there.
 
 Capacity check 2026-10-13 (chargectl holding, current ~0): `capacity` 47 % at 3.862 V; the dashboard/chargectl table gives ~54 % for the same voltage.
