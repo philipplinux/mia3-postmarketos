@@ -6,7 +6,7 @@ Tested on kernel `linux-nura-qcom-sm61x5` 7.2.3, booting slot b. No warranty: ba
 | Folder | What |
 |---|---|
 | `dts/` | Device-tree with cpufreq-hw, Bluetooth (WCN3988 on GENI UART) and the IR blaster. `CPUFREQ.md` has the cpufreq-only write-up |
-| `display/` | Framebuffer + touch UI (root service), icon tab bar: Overview, Containers, Processes, Network page (Wi-Fi details, static IP/DNS, picker, saved networks/forget, SSH, Tailscale, USB modes, Bluetooth with pairing popup, IR remote with d-pad/Home/Back), Files (browse/preview; new folder and delete only under `/home/philipp` and `/mnt/sd`), Power (incl. Reboot-on-freeze toggle: `system/90-mia3-panic.conf` sysctls; Audio & performance sub-page: speaker volume/gain, test tone, CPU per-cluster and GPU governor + max clock, using `dashboard/audio.py` and `gpu.py`) |
+| `display/` | Framebuffer + touch UI (root service), icon tab bar: Overview, Containers, Processes (CPU/RAM sorting), Network page (Wi-Fi details, static IP/DNS, picker, saved networks/forget, SSH, Tailscale, USB modes, Bluetooth with local adapter address, three-minute visibility countdown and pairing popup, IR remote with d-pad/Home/Back), Misc (Folders browser: browse/preview, new folder and delete only under `/home/philipp` and `/mnt/sd`; Audio: speaker volume/gain and test tone; CPU & GPU performance: live per-core/GPU clocks, governors and max clocks; Thermals: all zone/IIO/power-supply temperature readings, using `dashboard/audio.py` and `gpu.py`), Power (USB input current from PMI632 ADC; incl. Reboot-on-freeze toggle: `system/90-mia3-panic.conf` sysctls) |
 | `bluetooth/` | `bt-agent.service`: headless auto-accept agent (only without the display; the display has its own pairing popup) |
 | `dashboard/` | Web dashboard (user service on port 8090, reachable per interface: see "Web dashboard"): CPU per core/GPU/battery + charge limit/thermals/services/processes/SD, Audio & GPU card (speaker volume/gain, test tone, GPU governor/max clock) |
 | `charging/` | `pmi632_chg` kernel module (charge on/off, USB suspend) + `chargectl.py` that holds the battery at a set level (default 50 %, `/var/lib/chargectl/chargectl.json` owned by the dashboard user, adjustable on the Power page and the web dashboard) |
@@ -130,19 +130,19 @@ Binds `0.0.0.0:8090` but answers only on the interfaces switched on in the phone
 
 ## Shell
 
-Power key cycles: dashboard → terminal → blank. The terminal is sway + foot + wvkbd on VT 5 (`apk add sway foot
-wvkbd grim`) with a tab bar at the top (`sway/ttybar.py`, swaybar status blocks; tap to switch):
+Power key cycles: dashboard → tty1 (stock fbcon console) → blank. Optional: sway + foot + wvkbd on VT 5 (`apk add sway foot
+wvkbd grim`) for tabs tty2-4, with a tab bar at the top (`sway/ttybar.py`, swaybar status blocks; tap to switch);
+on tty1, swipe down from the top for its tab strip:
 
 | Tab | What |
 |---|---|
-| tty1 | foot running `kmsg.sh` (`journalctl -kf`, live kernel log, scrollable, buffyboard input lines hidden; a panic still draws over sway via `CONFIG_DRM_PANIC`) |
-| tty2, tty3 | foot shells |
-| tty4 | the old fbcon console on VT 1 (raw kernel messages, buffyboard keyboard); swipe down from the top for its tab strip |
+| tty1 | the stock fbcon console on VT 1 (raw kernel messages, buffyboard keyboard); swipe down from the top for its tab strip |
+| tty2, tty3, tty4 | foot shells in sway |
 
-`install.sh` sets it up: `sway/config`, `ttybar.py`, `respawn.sh`, `kmsg.sh` → `~/.config/sway/`, `sway/foot.ini` → `~/.config/foot/`,
+`install.sh` sets it up: `sway/config`, `ttybar.py`, `respawn.sh` → `~/.config/sway/`, `sway/foot.ini` → `~/.config/foot/`,
 `display/getty-autologin.conf` → `getty@tty{1,5}.service.d/autologin.conf`, getty on tty2-4 disabled;
 `.bash_profile` execs sway on tty5. wvkbd and the foot tabs restart themselves if they die (`respawn.sh`, only while sway is on screen). foot keeps 5000 lines of scrollback; the volume keys scroll it. Without sway running
-the power key falls back to the fbcon console. kmscon was dropped: 10.0 is DRM-only, nothing could draw over it.
+tabs tty2-4 fall back to the fbcon console. kmscon was dropped: 10.0 is DRM-only, nothing could draw over it.
 
 Copy `shell/.bashrc` and `shell/.bash_profile` to `~`, `shell/bashrc.d/` to `~/.bashrc.d/`, `shell/starship.toml` to `~/.config/`.
 Install: `apk add bash starship fzf fd font-jetbrains-mono-nerd`, ble.sh from https://github.com/akinomyoga/ble.sh
@@ -153,3 +153,13 @@ into `~/.local/share/blesh`, and `starship preset plain-text-symbols -o ~/.confi
 - Holding power ~12 s is a PMIC hardware reset (S2 timer), not a software restart.
 - Don't `cat` every `/sys/kernel/debug/regmap/*/registers`: it hard-crashes the phone.
 - `Unable to load a610_zap.mbn` at boot is the early probe before rootfs; the GPU comes up on first open.
+
+### USB input current
+
+The Power page reports USB input current independently of battery current. It uses the PMI632 ADC `usb_in_i_uv` sense voltage while Type-C reports sink mode: mA = µV / 400. In source/OTG mode it leaves this reading unavailable because the scale differs. This follows [Xiaomi's PMI632 conversion](https://github.com/MiCode/Xiaomi_Kernel_OpenSource/blob/d3766fc8cda2d96de2850faa9ce58e5a37ea9f9c/drivers/power/supply/qcom/smb5-lib.c#L3848-L3904), rather than using the Type-C advertised current limit. Accuracy has not been compared with an external meter.
+
+### USB charge-limit hold and audio controls (2026-10-13)
+
+With a limit enabled, chargectl charges to the selected threshold and latches hold for the current USB connection. Voltage sag does not start routine top-ups; USB input remains enabled. USB reconnection or raising the target can start a new cycle; thermal and low-battery safeguards remain. This does not physically disconnect the battery or guarantee zero battery current. Power labels battery, system (VPH), and USB input voltage separately.
+
+Audio has a bottom-speaker on/off slider that restores the previous gain. The upper-earpiece control is a disabled placeholder pending codec and routing bring-up.

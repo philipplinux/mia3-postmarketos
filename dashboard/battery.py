@@ -30,6 +30,21 @@ def smooth_vbat(v, now=None, window=60):
     return sum(x for _, x in VBAT) / len(VBAT)
 
 
+def usb_input_current_ma(sys_root):
+    """PMI632 USB sense voltage: 0.4 V/A in sink/buck mode; source/OTG uses a different scale."""
+    # Xiaomi laurel-r-oss d3766fc, smb5-lib.c smblib_get_prop_usb_current_now: uA = uV * 100 / 40.
+    root = Path(sys_root)
+    try:
+        roles = [(p.read_text().strip()) for p in (root / 'class/typec').glob('port*/power_role')]
+        if not any('[sink]' in r or r == 'sink' for r in roles):
+            return None
+        sense = next((root / 'bus/iio/devices').glob('iio:device*/in_voltage_usb_in_i_uv_input'))
+        uv = int(sense.read_text())
+        return round(uv / 400, 1) if uv >= 0 else None
+    except (OSError, ValueError, StopIteration):
+        return None
+
+
 def iio_battery(sys_root):
     def read(dev, key):
         try:
@@ -49,15 +64,19 @@ def iio_battery(sys_root):
     if vbat is None:
         return None
     usb = read(pmi, 'in_voltage_usb_in_v_div_16_input')
+    vph = read(pmi, 'in_voltage_vph_pwr_input')
     plugged = usb is not None and usb > 4000
     temp = read(pmi, 'in_temp_chg_temp_input')
     return {"available": True, "name": "PMI632 ADC (est.)", "percent": percent_from_vbat(smooth_vbat(vbat / 1000)),
             "status": status(plugged),
             "temperature_c": round(temp, 1) if temp is not None else None,
-            "voltage_v": round(vbat / 1000, 3), "current_ma": None, "present": True}
+            "voltage_v": round(vbat / 1000, 3),
+            "usb_voltage_v": round(usb / 1000, 3) if usb is not None else None,
+            "system_voltage_v": round(vph / 1000, 3) if vph is not None else None,
+            "current_ma": None, "present": True}
 
 
-MODES = {"charge": "Charging to ~{}%", "hold": "USB power, holding ~{}%", "discharge": "On battery, draining to ~{}%"}
+MODES = {"charge": "Charging to ~{}%", "hold": "USB power, holding ~{}%"}
 
 
 CONF = "/var/lib/chargectl/chargectl.json"  # read by chargectl.service; dir owned by philipp so this service can write
@@ -66,28 +85,25 @@ CONF = "/var/lib/chargectl/chargectl.json"  # read by chargectl.service; dir own
 def charge_conf():
     try:
         c = json.load(open(CONF))
-        return {"target": max(20, min(100, int(c.get("target", 50)))), "drain": bool(c.get("drain", True))}
+        return {"target": max(20, min(100, int(c.get("target", 50))))}
     except (OSError, ValueError, TypeError, AttributeError):
-        return {"target": 50, "drain": True}
+        return {"target": 50}
 
 
 def set_charge_conf(target=None, drain=None):
     c = charge_conf()
-    if target is not None:
-        if not isinstance(target, int) or isinstance(target, bool):
-            return False, "bad target"
-        c["target"] = max(20, min(100, target))
-    if drain is not None:
-        if not isinstance(drain, bool):
-            return False, "bad drain"
-        c["drain"] = drain
+    if target is None:
+        return True, "Drain mode is disabled; charge limit unchanged" if drain is not None else "No charge setting changed"
+    if not isinstance(target, int) or isinstance(target, bool):
+        return False, "bad target"
+    c = {"target": max(20, min(100, target))}
     try:
         with open(CONF + ".tmp", "w") as f:
             json.dump(c, f)
         os.replace(CONF + ".tmp", CONF)
     except OSError as e:
         return False, f"could not save: {e.strerror}"
-    return True, f"Charge limit {c['target']}%" + (", drain on" if c["drain"] else "")
+    return True, f"Charge limit {c['target']}%"
 
 
 def charge_target():
@@ -99,7 +115,7 @@ def status(plugged):
         mode, t = open("/run/chargectl.mode").read().strip(), charge_target()
         if plugged and mode == "charge" and t >= 100:
             return "Charging (no limit)"
-        return MODES[mode].format(t) if plugged else "On battery (est.)"
+        return MODES[mode].format(t) if plugged and mode in MODES else "On battery (est.)" if not plugged else "USB power, charge state unknown"
     except (OSError, KeyError):
         return "USB power / charging (est.)" if plugged else "On battery (est.)"
 
@@ -115,9 +131,9 @@ if __name__ == '__main__':
     VBAT.clear()
     import tempfile
     CONF = tempfile.mkdtemp() + '/c.json'
-    assert charge_conf() == {"target": 50, "drain": True}
-    assert set_charge_conf(85, False)[0] and charge_conf() == {"target": 85, "drain": False}
+    assert charge_conf() == {"target": 50}
+    assert set_charge_conf(85, False)[0] and charge_conf() == {"target": 85}
     assert set_charge_conf(5)[0] and charge_target() == 20
-    assert not set_charge_conf("x")[0] and not set_charge_conf(drain=1)[0]
+    assert not set_charge_conf("x")[0] and set_charge_conf(drain=True)[0]
     print(iio_battery('/sys'))
     print('ok')

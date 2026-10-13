@@ -2,6 +2,7 @@
 (audio/bringup.sh), i2c-tools, and the audio group on /dev/snd + /dev/i2c-1 (audio/60-mia3-dashboard.rules)."""
 import io
 import math
+import os
 import re
 import struct
 import subprocess
@@ -10,6 +11,7 @@ import wave
 MAX = 127  # AMP_VOL 0..127 = -16..+15.75 dB
 VOL_FILE = '/var/lib/mia3-audio/volume'  # read by audio/max98937-init.sh at boot
 GAIN_FILE = '/var/lib/mia3-audio/gain'
+LAST_GAIN_FILE = '/var/lib/mia3-audio/unmuted-gain'
 # Speaker_Gain 0x003b: PCM gain step in bits 0-2 (0 = mute, n = +3n dB up to +18), PDM bits kept at 0x50
 GAINS = ['Mute', '+3 dB', '+6 dB', '+9 dB', '+12 dB', '+15 dB', '+18 dB']
 ROUTE = 'SEC_MI2S_RX Audio Mixer MultiMedia3'
@@ -66,10 +68,54 @@ def set_gain(step):
         return False, 'sound card is not up (run audio/bringup.sh)'
     if not isinstance(step, int) or isinstance(step, bool) or not 0 <= step < len(GAINS):
         return False, 'bad gain'
+    previous = _amp(0x00, 0x3b, read=True)
+    if step == 0:
+        if previous is None:
+            return False, 'speaker state unavailable'
+        if previous & 7 and not _write_last_gain(previous & 7):
+            return False, 'could not remember speaker gain; left speaker on'
     if _amp(0x00, 0x3b, 0x50 | step) is None:
         return False, 'amp write failed (i2c-1 access?)'
     _save(GAIN_FILE, step)
+    if step:
+        _write_last_gain(step)
     return True, f'speaker gain {GAINS[step]}'
+
+
+def _write_last_gain(gain):
+    try:
+        with open(LAST_GAIN_FILE, 'w') as f:
+            f.write(f'{gain}\n')
+        if os.geteuid() == 0:
+            owner = os.stat(GAIN_FILE if os.path.exists(GAIN_FILE) else os.path.dirname(LAST_GAIN_FILE))
+            os.chown(LAST_GAIN_FILE, owner.st_uid, owner.st_gid)
+        return True
+    except OSError:
+        return False
+
+
+def _read_last_gain():
+    try:
+        gain = int(open(LAST_GAIN_FILE).read().strip())
+    except (OSError, ValueError):
+        return 3
+    return gain if 0 < gain < len(GAINS) else 3
+
+
+def toggle_bottom_speaker():
+    """Toggle the bottom speaker, restoring its last nonzero gain after mute."""
+    info = audio_info()
+    if not info.get('available'):
+        return False, 'sound card is not up (run audio/bringup.sh)'
+    gain = info.get('gain')
+    if gain is None:
+        return False, 'speaker state unavailable'
+    if gain:
+        ok, message = set_gain(0)
+        return (True, 'bottom speaker off') if ok else (False, message)
+    step = _read_last_gain()
+    ok, message = set_gain(step)
+    return (True, f'bottom speaker on ({GAINS[step]})') if ok else (False, message)
 
 
 def _save(path, value):

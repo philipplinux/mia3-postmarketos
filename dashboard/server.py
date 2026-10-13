@@ -117,7 +117,7 @@ def battery_info(sys_root: Path) -> dict[str, Any]:
             "temperature_c": None, "voltage_v": None, "current_ma": None, "present": None}
 
 
-from battery import charge_conf, iio_battery, set_charge_conf
+from battery import charge_conf, iio_battery, set_charge_conf, usb_input_current_ma
 
 SD_PATH = "/mnt/sd"
 LISTEN_CONF = "/var/lib/mia3-dashboard/listen.json"  # {"wifi","usb","tailscale": bool}, set on the phone's Network page
@@ -446,7 +446,8 @@ class Collector:
             storage = _disk(self.storage_path)
             return {
                 "collected_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
-                "battery": {**battery_info(self.sys_root), "charge": charge_conf()},
+                "battery": {**battery_info(self.sys_root), "charge": charge_conf(),
+                            "usb_current_ma": usb_input_current_ma(self.sys_root)},
                 "gpu": {**gpu_info(self.sys_root), "temp_c": zone_max(self.sys_root, ("gpu-",))},
                 "thermal": thermal_info(),
                 "audio": audio_info(),

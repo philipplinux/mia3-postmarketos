@@ -65,3 +65,11 @@ Kernel 7.2.3-sm61x5 config has `QCOM_APR=m`, `SOUNDWIRE_QCOM=m`, `PINCTRL_SM6115
 `SND_SOC_QDSP6` (q6afe/q6asm/q6adm), `SND_SOC_LPASS_{RX,TX,VA}_MACRO`, `SND_SOC_WCD937X_SDW` (the codec),
 `SND_SOC_SM8250` (machine driver used by SM6115/SM4250 boards). Needs a kernel rebuild with those plus dt nodes
 for APR services, the LPASS macros, SoundWire masters, WCD937x and a sound card (model on `sm4250`/`qrb4210-rb2`).
+
+## Upper earpiece investigation (2026-10-13)
+
+The upper earpiece is not enabled. The matching stock base family is `b_8` (MSM 0x18a, PM6125 + PMI632), rather than `b_9` (0x1d4). Stock QRD overlay `dtbo_a_16` describes WCD937x on RX/TX SoundWire; its supplies resolve to PM6125 L9A/L14A, nominal 1.8 V. The base has reset GPIO120 and audio reference clock GPIO112. Stock audio routing does not name EAR; the kernel WCD937x codec nevertheless has the internal `EAR_RDAC -> EAR PGA -> EAR` path and `EAR_PA Volume`.
+
+The live system has no SoundWire devices or bound WCD937x/LPASS macro drivers. Adding an output switch requires matching-kernel codec/macro modules, DT/card routing, and a quiet physical playback check; the GPIO/supply description alone does not prove the receiver is connected. A full kernel rebuild is not yet established as necessary: the existing bottom-speaker stack uses separately built modules. Preserve the working bottom-speaker path during this bring-up.
+
+Evidence: owner-supplied stock DTs under the separate private firmware project (`stock/dt/b_8.dts`, `dtbo_a_16.dts`); kernel `v7.2.3-r0` source `sound/soc/codecs/wcd937x.c`; live `/sys/bus/soundwire/devices`, loaded modules, `/boot/config`. No earpiece playback or deployment has been attempted.

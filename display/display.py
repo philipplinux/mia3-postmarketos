@@ -134,9 +134,10 @@ def render(data, stale=False, cores=False):
         text(60, 350, b.get('status') or 'No battery gauge', 36, MUTED, max_width=560)
         bar(60, 420, 560, b.get('percent'), h=24, color=col)
         temp = th.get('temp_c') if th.get('temp_c') is not None else b.get('temperature_c')
-        for i, (label, value) in enumerate((('Uptime', uptime_text(data.get('uptime_seconds'))),
-                                            ('Temperature', fmt(temp, 1, ' °C')))):
-            text(700, 195 + i * 150, label, 30, MUTED)
+        for i, (label, value, glyph) in enumerate((('Uptime', uptime_text(data.get('uptime_seconds')), '\U000F0954'),
+                                                   ('Temperature', fmt(temp, 1, ' °C'), '\U000F050F'))):
+            text(720, 210 + i * 150, glyph, 34, CYAN, anchor='mm', icon=True)
+            text(760, 195 + i * 150, label, 30, MUTED)
             text(700, 235 + i * 150, value, 52, AMBER if label == 'Temperature' and th.get('over') else TEXT, bold=True)
 
     cpu, mem, st, gpu = (data.get(k) or {} for k in ('cpu', 'memory', 'storage', 'gpu'))
@@ -147,16 +148,19 @@ def render(data, stale=False, cores=False):
              ('Memory', gib(mem.get('used_bytes')), f"of {gib(mem.get('total_bytes'))}", mem.get('used_percent')),
              ('Storage', gib(st.get('used_bytes')), f"{gib(st.get('free_bytes'))} free" + sd_free(), st.get('used_percent')),
              (gpu.get('model') or 'GPU', gpu_value, 'GPU load' + (f" · {gpu['temp_c']:.0f} °C" if gpu.get('temp_c') is not None else ''), load))
+    tile_icons = ('\U000F061A', '\U000F035B', '\U000F02CA', '\U000F061A')
     for i, (label, value, sub, pct) in enumerate(tiles):
         x, y = 30 + i % 2 * 525, 530 + i // 2 * 330
         card(x, y, 495, 300)
         if cores and i == 0:
-            text(x + 30, y + 25, 'Battery', 34, MUTED)
+            text(x + 50, y + 45, '\U000F0079', 36, CYAN, anchor='mm', icon=True)
+            text(x + 85, y + 25, 'Battery', 34, MUTED)
             col = batt_head(d, text, x + 30, y + 70, 72, b)
             bar(x + 30, y + 190, 435, b.get('percent'), color=col)
             text(x + 30, y + 230, b.get('status') or 'No battery gauge', 30, MUTED, max_width=435)
             continue
-        text(x + 30, y + 25, label, 34, MUTED, max_width=435)
+        text(x + 50, y + 45, tile_icons[i], 36, CYAN, anchor='mm', icon=True)
+        text(x + 85, y + 25, label, 34, MUTED, max_width=385)
         text(x + 30, y + 70, value, 72, bold=True, max_width=435)
         bar(x + 30, y + 190, 435, pct)
         text(x + 30, y + 230, sub, 30, MUTED, max_width=435)
@@ -164,25 +168,29 @@ def render(data, stale=False, cores=False):
     wifi, services = data.get('wifi') or {}, data.get('services') or {}
     x0, y0, x1, y1 = OV_NET
     card(x0, y0, x1 - x0, y1 - y0)
-    text(60, 1215, 'Wi-Fi', 30, MUTED)
+    text(78, 1232, '\U000F05A9', 34, CYAN, anchor='mm', icon=True)
+    text(110, 1215, 'Wi-Fi', 30, MUTED)
     text(60, 1255, wifi.get('ssid') or ('Disconnected' if wifi.get('connected') is False else 'unknown'), 56,
          bold=True, max_width=700)
     text(60, 1340, wifi.get('ip_address'), 38, MUTED, max_width=700)
     text(1020, 1230, fmt(wifi.get('signal_percent'), suffix='%'), 64, CYAN, bold=True, anchor='ra')
     text(1020, 1325, f"{wifi.get('rate_mbps') or ''}", 30, MUTED, anchor='ra', max_width=260)
+    service_icons = ('\U000F08C0', '\U000F0582', '\U000F00AF', '\U000F0553')
     for i, (key, label) in enumerate((('ssh', 'SSH'), ('tailscale', 'Tailscale'), ('bluetooth', 'Bluetooth'),
                                       ('usb', 'USB'))):
         up = (services.get(key) or {}).get('up')
         color = GREEN if up is True else AMBER if up is False else MUTED
         x = 60 + i * 245
         card(x, 1430, 225, 100, fill=BG, outline=color)
-        text(x + 112, 1480, label, 34, color, bold=True, anchor='mm')
+        text(x + 52, 1480, service_icons[i], 34, color, anchor='mm', icon=True)
+        text(x + 145, 1480, label, 28, color, bold=True, anchor='mm', max_width=150)
 
     cs = data.get('containers') or {}
     items = cs.get('containers') or []
     x0, y0, x1, y1 = OV_CONT
     card(x0, y0, x1 - x0, y1 - y0)
-    text(60, 1615, 'Containers', 34, MUTED)
+    text(80, 1632, '\U000F0868', 34, CYAN, anchor='mm', icon=True)
+    text(110, 1615, 'Containers', 34, MUTED)
     text(60, 1660, f"{sum(c.get('state') == 'running' for c in items)}/{len(items)}" if cs.get('available') else '—',
          72, bold=True)
     text(60, 1760, 'running' if cs.get('available') else 'Docker unavailable', 30, MUTED)
@@ -194,7 +202,8 @@ def render(data, stale=False, cores=False):
     procs = sorted(data.get('processes') or [], key=lambda p: p.get('cpu_percent') or 0, reverse=True)
     x0, y0, x1, y1 = OV_PROC
     card(x0, y0, x1 - x0, y1 - y0)
-    text(585, 1615, 'Processes', 34, MUTED)
+    text(605, 1632, '\U000F0279', 34, CYAN, anchor='mm', icon=True)
+    text(635, 1615, 'Processes', 34, MUTED)
     text(585, 1660, str(len(procs)) if procs else '—', 72, bold=True)
     text(585, 1760, 'CPU % of 1 core · RAM', 30, MUTED)
     for i, pr in enumerate(procs[:4]):
@@ -210,13 +219,14 @@ W, H = 1080, 2340            # layout/touch space; frames are drawn at P x this 
 P = 2 / 3
 IMG = (720, 1560)
 TAB_Y = 2190
-TABS = ('Overview', 'Containers', 'Processes', 'Network', 'Files', 'Power')
-TAB_ICONS = ('\U000F056E', '\U000F0868', '\U000F0EE0', '\U000F05A9', '\U000F024B', '\U000F0425')  # Material Design (Nerd Font)
-FILES_PAGE = TABS.index('Files')
+TABS = ('Overview', 'Containers', 'Processes', 'Network', 'Misc', 'Power')
+TAB_ICONS = ('\U000F056E', '\U000F0868', '\U000F0EE0', '\U000F05A9', '\U000F0415', '\U000F0425')  # Material Design (Nerd Font)
+MISC_PAGE = TABS.index('Misc')
 TAB_W = W // len(TABS)
 ROW_HS = {1: 170, 2: 120}   # list row height per page (containers, processes)
 ROW_H = ROW_HS[1]
 TOP_PROCS = 30
+PROC_SORT_BTNS = (('cpu_percent', 'CPU', (600, 25, 800, 125)), ('rss_bytes', 'RAM', (820, 25, 1040, 125)))
 GRACE_S = 5.0               # SIGKILL is offered this long after a SIGTERM
 ACT_L, ACT_R, ACT_W = (30, 2150, 520, 2290), (560, 2150, 1050, 2290), (30, 2150, 1050, 2290)
 DASH_URL = 'http://127.0.0.1:8090'
@@ -232,32 +242,37 @@ CONFIRM_TEXT = {'restart': ('Restart', 'The container will be restarted'), 'paus
                 'delete': ('Delete', 'The file is gone for good'),
                 'delete_dir': ('Delete', 'The folder and everything in it'),
                 'reboot': ('Reboot', 'The phone restarts'), 'poweroff': ('Shut down', 'Turn it back on with the power button')}
-CHG_CONF = '/var/lib/chargectl/chargectl.json'    # read by chargectl.service: {"target": 20-100, "drain": bool}
-LIM_MINUS, LIM_PLUS, DRAIN_BTN = (60, 1040, 260, 1160), (820, 1040, 1020, 1160), (60, 1200, 1020, 1300)
+CHG_CONF = '/var/lib/chargectl/chargectl.json'    # read by chargectl.service: {"target": 20-100}
+LIM_MINUS, LIM_PLUS = (60, 650, 260, 770), (820, 650, 1020, 770)
 TG_CONF = '/var/lib/thermal-guard/limits.json'   # read by thermal-guard.service every poll
 TG_LIMITS = (('batt_max', 'Battery max', ' °C', 1, 40, 65, 55), ('soc_max', 'CPU/GPU max', ' °C', 5, 70, 110, 100),
              ('hold_s', 'Sustained for', ' s', 10, 10, 300, 60))     # key, label, unit, step, min, max, default
 TG_CARD = (30, 1350, 1050, 1590)
-LOCK_CHG, LOCK_TG = (810, 972, 1020, 1026), (790, 45, 1040, 125)   # charge limit card / Thermal guard page
+LOCK_CHG, LOCK_TG = (760, 520, 1020, 630), (790, 45, 1040, 125)   # charge limit card / Thermal guard page
 UNLOCK = [0.0]   # monotonic deadline: limits are editable until then, tap the lock pill to unlock for 60 s
 FREEZE_BTN = (30, 1850, 1050, 2000)
-PERF_CARD = (30, 2020, 1050, 2170)      # Power page -> Audio & performance sub-page
-TONE_BTN = (30, 1300, 1050, 1430)
+MISC_FOLDERS = (30, 170, 1050, 360)
+MISC_AUDIO = (30, 390, 1050, 580)
+MISC_PERF = (30, 610, 1050, 800)
+MISC_THERMALS = (30, 830, 1050, 1020)
+THERMAL_TOP, THERMAL_ROW = 170, 105
+TONE_BTN = (30, 680, 1050, 810)
+AUDIO_SPEAKER_BTN = (760, 960, 1020, 1110)
 # speaker volume/gain + test tone from the web dashboard's modules (reused, not copied)
 DASH_LIB = '/home/philipp/projects/mia3-dashboard/dashboard'
 CPUFREQ = Path('/sys/devices/system/cpu/cpufreq')
 PERF_ROWS = (('volume', 'Speaker volume'), ('gain', 'Speaker gain'), ('policy0', 'CPU little (0-3) max'),
-             ('policy4', 'CPU big (4-7) max'), ('gpu', 'GPU max'))    # Power page: reboot-on-freeze toggle (system/90-mia3-panic.conf)
+             ('policy4', 'CPU big (4-7) max'), ('gpu', 'GPU max'))    # Audio rows, followed by CPU/GPU rows
 PANIC_CONF = '/etc/sysctl.d/90-mia3-panic.conf'
 PANIC_KEYS = ('softlockup_panic', 'hardlockup_panic', 'panic_on_rcu_stall')   # kernel.panic = 10 then reboots
 POWER_BTNS = (('reboot', (30, 1620, 520, 1820)), ('poweroff', (560, 1620, 1050, 1820)))
 LIST_TOP = 150
 LIST_BOTTOM = TAB_Y - 10
 DRAG_PX = 40
-TTYS = (1, 2, 3, 4)  # tabs: tty1-3 = sway workspaces on GPU_VT, tty4 = fbcon VT 1 (OLD_TAB). Strip on VT 1: swipe down from the top edge to show, tap a tab (hides it) or swipe up
+TTYS = (1, 2, 3, 4)  # tabs: tty1 = fbcon VT 1 (OLD_TAB), tty2-4 = sway workspaces on GPU_VT. Strip on VT 1: swipe down from the top edge to show, tap a tab (hides it) or swipe up
 BAR_DIV = 24         # strip height = panel height / BAR_DIV (65 px on 1560)
-OLD_TAB = 4          # tab showing the fbcon console (VT 1, buffyboard, raw kernel messages)
-GPU_VT = 5           # sway/foot (sway/config); power key: dashboard -> sway (fbcon tty1 if sway isn't running) -> blank
+OLD_TAB = 1          # tab showing the fbcon console (VT 1, buffyboard, raw kernel messages)
+GPU_VT = 5           # sway/foot (sway/config), optional: tabs tty2-4; power key: dashboard -> fbcon tty1 -> blank
 VOL_STEP = 600        # volume keys scroll lists by this many px
 SWIPE_PX = 250
 LONG_S = 0.8
@@ -315,7 +330,7 @@ NET_TOP, NET_ROW = 720, 150
 SSH_TOGGLE = (700, 185, 1035, 305)
 USER_BTN = (30, 350, 1050, 490)
 BT_POWER = (30, 170, 1050, 290)
-BT_TOP = 460
+BT_TOP = 500
 USB_MODES = (('network', 'Network', 'USB Ethernet, phone at 172.16.42.1'),
              ('serial', 'Network + serial', 'Adds a login console (ttyACM on the PC)'),
              ('charge', 'Charge only', 'No data, just power'))
@@ -530,6 +545,9 @@ def bt_powered():
 
 def bt_scan():
     sh('bluetoothctl', 'power', 'on', timeout=10)
+    ok, msg, _ = bt_vis(True)
+    if not ok:
+        return False, msg, bt_list()
     sh('bluetoothctl', '--timeout', '8', 'scan', 'on', timeout=15)
     return bt_list()
 
@@ -824,12 +842,18 @@ class PairAgent:
             await asyncio.sleep(30)
 
 
+BT_VISIBLE_UNTIL = None
+
+
 def bt_vis(on):
-    for cmd in (('pairable', 'on' if on else 'off'), ('discoverable', 'on' if on else 'off')):
+    global BT_VISIBLE_UNTIL
+    commands = (('pairable', 'on'), ('discoverable-timeout', '180'), ('discoverable', 'off'), ('discoverable', 'on')) if on else (('discoverable', 'off'), ('pairable', 'off'))
+    for cmd in commands:
         ok, msg = sh('bluetoothctl', *cmd, timeout=10)
         if not ok or 'Failed' in msg:
-            return False, msg[-80:], bt_list()
-    return True, 'Visible for 3 minutes' if on else 'Hidden', bt_list()
+            return False, msg[-80:], bt_state()
+    BT_VISIBLE_UNTIL = time.monotonic() + 180 if on else None
+    return True, 'Visible for 3 minutes' if on else 'Hidden', bt_state()
 
 
 def bt_rename(name):
@@ -840,7 +864,10 @@ def bt_rename(name):
 def bt_state():
     out = sh('bluetoothctl', 'show', timeout=5)[1]
     alias = next((l.split(':', 1)[1].strip() for l in out.splitlines() if l.strip().startswith('Alias:')), '')
-    return {'on': 'Powered: yes' in out, 'vis': 'Discoverable: yes' in out, 'alias': alias}
+    addr = next((m.group(1) for line in out.splitlines()
+                 if (m := re.match(r'^Controller\s+([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})(?:\s|$)', line))), None)
+    return {'on': 'Powered: yes' in out, 'vis': 'Discoverable: yes' in out, 'alias': alias, 'addr': addr,
+            'vis_until': BT_VISIBLE_UNTIL if 'Discoverable: yes' in out else None}
 
 
 def back_btn(text, card):
@@ -900,9 +927,9 @@ def core_stats():
     return out
 
 
-def draw_cores(d, text, bar, data):
+def draw_cores(d, text, bar, data, yoffset=0):
     """Per-core busy % and clock in the Overview's big card: Little cluster left, Big right."""
-    text(60, 180, f"CPU cores · total {fmt((data.get('cpu') or {}).get('percent'), 0, '%')} · MHz", 34, MUTED)
+    text(60, 180 + yoffset, f"CPU cores · total {fmt((data.get('cpu') or {}).get('percent'), 0, '%')} · MHz", 34, MUTED)
     groups = {}
     for c in core_stats():
         groups.setdefault(c[3], []).append(c)
@@ -913,9 +940,9 @@ def draw_cores(d, text, bar, data):
             top = f" · max {int(Path(pol, 'cpuinfo_max_freq').read_text()) / 1e6:.1f} GHz"
         except (OSError, ValueError):
             top = ''
-        text(x, 235, name + top, 28, MUTED)
+        text(x, 235 + yoffset, name + top, 28, MUTED)
         for i, (n, pct, mhz, _) in enumerate(cs[:4]):
-            y = 285 + i * 52
+            y = 285 + yoffset + i * 52
             text(x, y, f'cpu{n}', 30, bold=True)
             bar(x + 100, y + 16, 180, pct, 14, AMBER if (pct or 0) >= 80 else CYAN)
             text(x + 370, y, fmt(pct, 0, '%'), 30, anchor='ra')
@@ -1057,6 +1084,23 @@ def page_files(w, data):
     return image
 
 
+def page_misc(stale):
+    image = Image.new('RGB', IMG, BG)
+    d, text, card, bar = tools(image)
+    header(image, 'Misc', stale)
+    for box, glyph, title, hint in ((MISC_FOLDERS, '\U000F024B', 'Folders', 'Browse and manage files'),
+                                    (MISC_AUDIO, '\U000F04C3', 'Audio', 'Speaker volume, gain and test tone'),
+                                    (MISC_PERF, '\U000F061A', 'CPU & GPU performance', 'Cluster clocks and governors'),
+                                    (MISC_THERMALS, '\U000F050F', 'Thermals', 'All available temperature readings')):
+        x0, y0, x1, y1 = box
+        card(x0, y0, x1 - x0, y1 - y0)
+        text(x0 + 80, y0 + 95, glyph, 64, CYAN, anchor='mm', icon=True)
+        text(x0 + 150, y0 + 36, title, 46, bold=True, max_width=780)
+        text(x0 + 150, y0 + 120, hint, 32, MUTED, max_width=780)
+        text(x1 - 30, y0 + 92, '›', 72, CYAN, anchor='ra')
+    return image
+
+
 def page_ipcfg(w, data):
     image = Image.new('RGB', IMG, BG)
     d, text, card, bar = tools(image)
@@ -1107,9 +1151,13 @@ def page_bt(w, data):
         return image
     text(290, 48, 'Bluetooth', 56, bold=True)
     vis = w.get('vis')
-    btn(text, card, BT_VIS, 'Visible' if vis else 'Hidden', GREEN if vis else MUTED, 44)
+    remaining = max(0, int(w['vis_until'] - time.monotonic())) if vis and w.get('vis_until') else None
+    vis_label = f'Visible · {remaining // 60}:{remaining % 60:02d}' if remaining is not None else 'Visible'
+    btn(text, card, BT_VIS, vis_label if vis else 'Hidden', GREEN if vis else MUTED, 40)
     btn(text, card, BT_NAME, (w.get('alias') or 'Name') + ' ›', CYAN, 40, False)
     btn(text, card, RESCAN_BTN, 'Rescan', CYAN, 40, False)
+    text(60, 448, 'Local address', 30, MUTED)
+    text(1020, 448, w.get('addr') or 'unavailable', 30, MUTED, anchor='ra', mono=True, max_width=700)
     on = w.get('on')
     btn(text, card, BT_POWER, 'On · tap to turn off' if on else 'Off · tap to turn on', GREEN if on else AMBER, 44)
     if w['devs'] is None:
@@ -1231,27 +1279,28 @@ def containers_of(data):
     return (data.get('containers') or {}).get('containers') or []
 
 
-def procs_of(data):
-    # server order is already CPU then RSS; the top slice is what the Processes tab lists
-    return (data.get('processes') or [])[:TOP_PROCS]
+def procs_of(data, sort='cpu_percent'):
+    return sorted(data.get('processes') or [],
+                  key=lambda p: (p.get(sort) or 0, p.get('cpu_percent') or 0, p.get('rss_bytes') or 0),
+                  reverse=True)[:TOP_PROCS]
 
 
-def items_of(data, page):
-    return procs_of(data) if page == 2 else containers_of(data)
+def items_of(data, page, sort='cpu_percent'):
+    return procs_of(data, sort) if page == 2 else containers_of(data)
 
 
-def row_at(data, y, scroll, page=1):
+def row_at(data, y, scroll, page=1, sort='cpu_percent'):
     if not LIST_TOP <= y < LIST_BOTTOM:
         return None
     idx = int((y - LIST_TOP + scroll) // ROW_HS[page])
-    items = items_of(data, page)
+    items = items_of(data, page, sort)
     if not 0 <= idx < len(items):
         return None
     return items[idx] if page == 2 else items[idx].get('name')
 
 
-def max_scroll(data, page=1):
-    return max(0, len(items_of(data, page)) * ROW_HS[page] - (LIST_BOTTOM - LIST_TOP))
+def max_scroll(data, page=1, sort='cpu_percent'):
+    return max(0, len(items_of(data, page, sort)) * ROW_HS[page] - (LIST_BOTTOM - LIST_TOP))
 
 
 def container_actions(state):
@@ -1266,15 +1315,16 @@ def boxes(n):
 class Ui:
     def __init__(self):
         self.page, self.scroll, self.base = 0, 0, 0
+        self.proc_sort = 'cpu_percent'
         self.detail = self.info = self.confirm = None   # confirm = (act, arg, label, deadline)
         self.pdetail = None    # process detail: (pid, start)
         self.termed = {}       # (pid, start) -> time SIGTERM was accepted
         self.toast = ('', 0.0)
         self.wifi = None       # picker: {'nets', 'sel', 'pw', 'mode', 'show'}
         self.ov_cores = False  # Overview: per-core CPU in the big card instead of the battery
-        self.sub = None        # Network sub-page: {'kind': 'ssh' | 'usb' | 'bt', ...}
+        self.sub: dict | None = None        # Network sub-page: {'kind': 'ssh' | 'usb' | 'bt', ...}
         self.pair = None       # Bluetooth agent request: {'name', 'kind', 'code'}
-        self.files = {'kind': 'files', 'path': '/', 'ents': [], 'scroll': 0, 'view': None}   # Files tab state
+        self.files = {'kind': 'files', 'path': '/', 'ents': [], 'scroll': 0, 'view': None}   # Folders browser state
         self.files_opened = False
 
     def tick(self, now):
@@ -1324,14 +1374,12 @@ class Ui:
             return []
         if self.wifi is not None:
             return self.on_wifi(g, now)
+        if (kind == 'tap' and self.sub is not None and self.sub['kind'] == 'files'
+                and not self.sub.get('edit') and g[2] >= TAB_Y):
+            self.page, self.scroll, self.sub = min(len(TABS) - 1, int(g[1] // TAB_W)), 0, None
+            return []
         if self.sub is not None:
             return self.on_sub(g, data, now)
-        if self.page == FILES_PAGE and kind != 'swipe' and (self.files.get('edit') or not (kind == 'tap' and g[2] >= TAB_Y)):
-            self.sub = self.files            # the Files tab reuses the sub-page handlers
-            try:
-                return self.on_sub(g, data, now)
-            finally:
-                self.sub = None
         if self.detail or self.pdetail:
             if (kind == 'tap' and hit(BACK_BTN, g[1], g[2])) or (kind == 'swipe' and g[1] == 'right'):
                 self.detail = self.info = self.pdetail = None
@@ -1354,13 +1402,18 @@ class Ui:
         if kind == 'scrollstart':
             self.base = self.scroll
         elif kind == 'scroll' and self.page in (1, 2):
-            self.scroll = int(min(max_scroll(data, self.page), max(0, self.base - g[1])))
+            self.scroll = int(min(max_scroll(data, self.page, self.proc_sort), max(0, self.base - g[1])))
         elif kind == 'swipe':
             self.page = min(len(TABS) - 1, max(0, self.page + (1 if g[1] == 'left' else -1)))
             self.scroll = 0
         elif kind == 'tap':
             x, y = g[1], g[2]
-            hitrow = row_at(data, y, self.scroll, self.page) if self.page in (1, 2) else None
+            if self.page == 2:
+                for key, _, box in PROC_SORT_BTNS:
+                    if hit(box, x, y):
+                        self.proc_sort, self.scroll = key, 0
+                        return []
+            hitrow = row_at(data, y, self.scroll, self.page, self.proc_sort) if self.page in (1, 2) else None
             if y >= TAB_Y:
                 self.page, self.scroll = min(len(TABS) - 1, int(x // TAB_W)), 0
             elif y < LIST_TOP:
@@ -1399,10 +1452,21 @@ class Ui:
             elif self.page == 3 and hit(WIFI_CARD, x, y):
                 self.sub = {'kind': 'wifi', 'info': None}
                 return [('wifi', wifi_info)]
+            elif self.page == MISC_PAGE and hit(MISC_FOLDERS, x, y):
+                if not self.files_opened:
+                    self.files_opened = True
+                    self.open_dir(HOME_DIR if os.path.isdir(HOME_DIR) else '/')
+                self.sub = self.files
+            elif self.page == MISC_PAGE and hit(MISC_AUDIO, x, y):
+                self.sub = {'kind': 'audio'}
+            elif self.page == MISC_PAGE and hit(MISC_PERF, x, y):
+                self.sub = {'kind': 'perf'}
+            elif self.page == MISC_PAGE and hit(MISC_THERMALS, x, y):
+                self.sub = {'kind': 'thermals', 'scroll': 0, 'base': 0}
             elif self.page == len(TABS) - 1 and hit(LOCK_CHG, x, y):
                 UNLOCK[0] = 0.0 if limits_open() else time.monotonic() + 60
-            elif self.page == len(TABS) - 1 and not limits_open() and any(hit(b, x, y) for b in (LIM_MINUS, LIM_PLUS, DRAIN_BTN)):
-                self.toast = ('Locked: tap "Locked" first', now + 3)
+            elif self.page == len(TABS) - 1 and not limits_open() and any(hit(b, x, y) for b in (LIM_MINUS, LIM_PLUS)):
+                self.toast = ('Tap "Edit limit" first', now + 3)
             elif self.page == len(TABS) - 1 and (hit(LIM_MINUS, x, y) or hit(LIM_PLUS, x, y)):
                 t = charge_conf()['target'] + (5 if hit(LIM_PLUS, x, y) else -5)
                 try:
@@ -1415,13 +1479,6 @@ class Ui:
                 try:
                     set_freeze_reboot(not freeze_reboot())
                     self.toast = ('Reboot on freeze ' + ('on' if freeze_reboot() else 'off'), now + 3)
-                except OSError as e:
-                    self.toast = (f'Could not save: {e.strerror}', now + 4)
-            elif self.page == len(TABS) - 1 and hit(PERF_CARD, x, y):
-                self.sub = {'kind': 'perf'}
-            elif self.page == len(TABS) - 1 and hit(DRAIN_BTN, x, y):
-                try:
-                    set_charge_conf(drain=not charge_conf()['drain'])
                 except OSError as e:
                     self.toast = (f'Could not save: {e.strerror}', now + 4)
             elif self.page == len(TABS) - 1:
@@ -1547,6 +1604,7 @@ class Ui:
     def on_sub(self, g, data, now):
         """SSH / USB / Bluetooth sub-pages of the Network tab."""
         w, kind = self.sub, g[0]
+        assert w is not None
         if (kind == 'tap' and hit(BACK_BTN, g[1], g[2])) or (kind == 'swipe' and g[1] == 'right'):
             if w['kind'] == 'ipcfg':
                 self.sub = {'kind': 'wifi', 'info': w['info']}
@@ -1574,6 +1632,14 @@ class Ui:
             else:
                 total = len(v['lines']) * FILE_LINE if v else len(w['ents']) * FILE_ROW
             w['scroll'] = int(min(max(0, total - (TAB_Y - FILE_TOP) + 40), max(0, w['base'] - g[1])))
+            return []
+        if w['kind'] == 'thermals' and kind in ('scrollstart', 'scroll'):
+            if kind == 'scrollstart':
+                w['base'] = w.get('scroll', 0)
+                return []
+            total = len(thermal_readouts()) * THERMAL_ROW
+            w['scroll'] = int(min(max(0, total - (TAB_Y - THERMAL_TOP)),
+                                  max(0, w.get('base', 0) - g[1])))
             return []
         if kind == 'long' and w['kind'] == 'files' and not (w['view'] or w.get('edit')):
             return self.on_files(g, g[1], g[2], now)
@@ -1626,8 +1692,8 @@ class Ui:
                             tg_step(i, sign)
                         except OSError as e:
                             self.toast = (f'Could not save: {e.strerror}', now + 4)
-        elif w['kind'] == 'perf':
-            msg = perf_tap(x, y)
+        elif w is not None and w.get('kind') in ('audio', 'perf'):
+            msg = perf_tap(w['kind'], x, y)
             if msg:
                 self.toast = (msg, now + 3)
         elif w['kind'] == 'web':
@@ -1708,13 +1774,11 @@ class Ui:
         return []
 
     def render(self, data, stale, now):
-        if self.page == FILES_PAGE and not self.files_opened:
-            self.files_opened = True
-            self.open_dir(HOME_DIR if os.path.isdir(HOME_DIR) else '/')
         if self.wifi is not None:
             image = page_wifi(self.wifi)
         elif self.sub is not None:
-            image = {'ssh': page_ssh, 'usb': page_usb, 'web': page_web, 'thermal': page_thermal, 'perf': page_perf, 'bt': page_bt, 'wifi': page_wifiinfo, 'ipcfg': page_ipcfg,
+            image = {'ssh': page_ssh, 'usb': page_usb, 'web': page_web, 'thermal': page_thermal, 'thermals': page_thermals,
+                     'audio': page_perf, 'perf': page_perf, 'bt': page_bt, 'wifi': page_wifiinfo, 'ipcfg': page_ipcfg,
                      'ir': page_ir, 'saved': page_saved, 'files': page_files}[self.sub['kind']](self.sub, data)
         elif self.detail:
             image = page_detail(self.detail, self.info, data)
@@ -1722,14 +1786,15 @@ class Ui:
             image = page_proc_detail(self, data, now)
         elif self.page == 0:
             image = render(data, stale, self.ov_cores)
-        elif self.page == FILES_PAGE:
-            image = page_files(self.files, data)
+        elif self.page == MISC_PAGE:
+            image = page_misc(stale)
         else:
             image = {1: page_containers, 2: page_processes, 3: page_network, 5: page_battery}[self.page](
-                data, stale, *((self.scroll,) if self.page in (1, 2) else ()))
+                data, stale, *((self.scroll, self.proc_sort) if self.page == 2 else (self.scroll,) if self.page == 1 else ()))
         d, text, card, bar = tools(image)
-        typing = self.page == FILES_PAGE and self.files.get('edit')     # keyboard needs the tab bar's space
-        if not (self.detail or self.pdetail or self.wifi is not None or self.sub is not None or typing):
+        show_tabs = not (self.detail or self.pdetail or self.wifi is not None) and (
+            self.sub is None or self.sub['kind'] == 'files' and not self.sub.get('edit'))
+        if show_tabs:
             d.rectangle((0, TAB_Y * P, IMG[0], IMG[1]), fill=PANEL)
             d.line((0, TAB_Y * P, IMG[0], TAB_Y * P), fill=LINE, width=1)
             for i, name in enumerate(TABS):
@@ -1829,10 +1894,10 @@ def page_containers(data, stale, scroll):
     return image
 
 
-def page_processes(data, stale, scroll):
+def page_processes(data, stale, scroll, sort='cpu_percent'):
     image = Image.new('RGB', IMG, BG)
     d, text, card, bar = tools(image)
-    rows = procs_of(data)
+    rows = procs_of(data, sort)
     rh = ROW_HS[2]
     if not rows:
         text(40, 200, 'No process data', 40, MUTED)
@@ -1854,7 +1919,10 @@ def page_processes(data, stale, scroll):
         top = LIST_TOP + span * scroll / total
         d.rounded_rectangle((1066 * P, top * P, 1074 * P, (top + span * span / total) * P), 3, fill=MUTED)
     cores = (data.get('cpu') or {}).get('logical_cores')
-    header(image, 'Processes', stale, f"100% = 1 core of {cores or '?'}")
+    header(image, 'Processes', stale)
+    for key, label, box in PROC_SORT_BTNS:
+        btn(text, card, box, label, CYAN if sort == key else MUTED, 36)
+    text(40, 108, f"{'Offline · ' if stale else ''}100% = 1 core of {cores or '?'}", 25, MUTED)
     return image
 
 
@@ -1906,7 +1974,8 @@ def page_network(data, stale):
     header(image, 'Network', stale)
     wifi, services = data.get('wifi') or {}, data.get('services') or {}
     card(30, 170, 1020, 520)
-    text(60, 195, 'Wi-Fi', 34, MUTED)
+    text(85, 215, '\U000F05A9', 48, CYAN, anchor='mm', icon=True)
+    text(125, 195, 'Wi-Fi', 34, MUTED)
     text(60, 250, wifi.get('ssid') or ('Disconnected' if wifi.get('connected') is False else 'unknown'), 64,
          bold=True, max_width=960)
     text(60, 350, wifi.get('ip_address'), 44, max_width=960)
@@ -1918,7 +1987,6 @@ def page_network(data, stale):
         up = (services.get(key) or {}).get('up')
         y = NET_TOP + i * NET_ROW
         card(30, y, 1020, NET_ROW - 15)
-        text(60, y + 35, label, 52, bold=True)
         state = 'Up' if up is True else 'Down' if up is False else 'Unknown'
         if key == 'usb':
             m = usb_mode()
@@ -1931,7 +1999,12 @@ def page_network(data, stale):
         elif key == 'web':
             up = web_up()
             state = 'On' if up else 'Off' if up is False else state
-        text(980, y + 35, state, 48, GREEN if up is True else AMBER if up is False else MUTED, bold=True, anchor='ra')
+        color = GREEN if up is True else AMBER if up is False else MUTED
+        glyph = {'ssh': '\U000F08C0', 'tailscale': '\U000F0582', 'usb': '\U000F0553',
+                 'bluetooth': '\U000F00AF', 'ir': '\U000F0454', 'web': '\U000F059F'}[key]
+        text(85, y + 67, glyph, 48, color, anchor='mm', icon=True)
+        text(140, y + 35, label, 52, bold=True, max_width=700)
+        text(980, y + 35, state, 48, color, bold=True, anchor='ra')
         text(1030, y + 33, '›', 52, MUTED, anchor='ra')
     text(1030, 190, '›', 52, MUTED, anchor='ra')
     return image
@@ -1940,9 +2013,9 @@ def page_network(data, stale):
 def charge_conf():
     try:
         c = json.load(open(CHG_CONF))
-        return {'target': max(20, min(100, int(c.get('target', 50)))), 'drain': bool(c.get('drain', True))}
+        return {'target': max(20, min(100, int(c.get('target', 50))))}
     except (OSError, ValueError, TypeError, AttributeError):
-        return {'target': 50, 'drain': True}
+        return {'target': 50}
 
 
 def freeze_reboot(kdir='/proc/sys/kernel'):
@@ -2013,6 +2086,68 @@ def page_thermal(w, data):
     return image
 
 
+def thermal_readouts():
+    """Return named zone, power-supply, and IIO temperatures without treating sentinels as readings."""
+    def read_temp(path, scale):
+        try:
+            value = int(Path(path).read_text().strip()) / scale
+        except (OSError, ValueError, UnicodeError):
+            return None, 'unavailable'
+        if value == -40:
+            return None, 'skip'
+        if -20 < value < 150:
+            return value, None
+        return None, 'invalid'
+
+    out = []
+    for zone in sorted(glob.glob('/sys/class/thermal/thermal_zone*')):
+        try:
+            name = Path(zone, 'type').read_text().strip() or os.path.basename(zone)
+        except (OSError, UnicodeError):
+            name = os.path.basename(zone)
+        value, status = read_temp(zone + '/temp', 1000)
+        if status != 'skip':
+            out.append((f'Zone · {name}', value, status))
+    for path in sorted(glob.glob('/sys/bus/iio/devices/iio:device*/in_temp_*_input')):
+        name = os.path.basename(path).removeprefix('in_temp_').removesuffix('_input')
+        value, status = read_temp(path, 1000)
+        if status != 'skip':
+            out.append((f'IIO · {name}', value, status))
+    for path in sorted(glob.glob('/sys/class/power_supply/*/temp')):
+        name = os.path.basename(os.path.dirname(path))
+        value, status = read_temp(path, 10)
+        if status != 'skip':
+            out.append((f'Power · {name}', value, status))
+    return out
+
+
+def page_thermals(w, data):
+    image = Image.new('RGB', IMG, BG)
+    d, text, card, bar = tools(image)
+    back_btn(text, card)
+    text(290, 48, 'Temperature sensors', 56, bold=True, max_width=700)
+    sensors = thermal_readouts()
+    clip = Image.new('RGB', (IMG[0], round((TAB_Y - THERMAL_TOP) * P)), BG)
+    cd, ctext, ccard, _ = tools(clip)
+    if not sensors:
+        ctext(540, 300, 'No temperature sensors found', 40, MUTED, anchor='mm')
+    else:
+        scroll = w.get('scroll', 0)
+        first = scroll // THERMAL_ROW
+        last = min(len(sensors), first + (TAB_Y - THERMAL_TOP) // THERMAL_ROW + 2)
+        for i in range(first, last):
+            name, value, status = sensors[i]
+            y = i * THERMAL_ROW - scroll
+            ccard(30, y, 1020, 90)
+            ctext(80, y + 45, '\U000F050F', 42, CYAN, anchor='mm', icon=True)
+            ctext(140, y + 27, name, 32, MUTED, max_width=650)
+            shown = f'{value:.1f} °C' if value is not None else status
+            ctext(1010, y + 27, shown, 34, TEXT if value is not None else AMBER,
+                  bold=value is not None, anchor='ra', max_width=290)
+    image.paste(clip, (0, round(THERMAL_TOP * P)))
+    return image
+
+
 def limits_open():
     return time.monotonic() < UNLOCK[0]
 
@@ -2024,8 +2159,19 @@ def lock_pill(text, card, box):
     text((box[0] + box[2]) // 2, (box[1] + box[3]) // 2, label, 30, GREEN if on else AMBER, bold=True, anchor='mm')
 
 
-def set_charge_conf(**kw):
-    c = {**charge_conf(), **kw}
+def charge_lock_button(text, card, box):
+    on = limits_open()
+    color = GREEN if on else AMBER
+    card(box[0], box[1], box[2] - box[0], box[3] - box[1], fill=BG, outline=color)
+    glyph = '\U000F033F' if on else '\U000F033E'
+    label = f'Done {max(0, int(UNLOCK[0] - time.monotonic() + 0.999))}s' if on else 'Edit limit'
+    x = (box[0] + box[2]) // 2
+    text(x, box[1] + 34, glyph, 42, color, anchor='mm', icon=True)
+    text(x, box[1] + 79, label, 30, color, bold=True, anchor='mm')
+
+
+def set_charge_conf(target):
+    c = {'target': max(20, min(100, int(target)))}
     tmp = CHG_CONF + '.tmp'
     with open(tmp, 'w') as f:
         json.dump(c, f)
@@ -2037,61 +2183,76 @@ def page_battery(data, stale):
     d, text, card, bar = tools(image)
     header(image, 'Battery & power', stale)
     b = data.get('battery') or {}
-    card(30, 170, 1020, 420)
-    col = batt_head(d, text, 60, 190, 140, b)
-    text(60, 380, b.get('status') or 'No battery gauge', 38, MUTED, max_width=960)
-    bar(60, 450, 960, b.get('percent'), h=28, color=col)
-    text(60, 510, 'Estimated from battery voltage' if b.get('name') else '', 30, MUTED)
-    up = data.get('uptime_seconds')
-    for i, (label, value) in enumerate((
-            ('Voltage', fmt(b.get('voltage_v'), 3, ' V')),
-            ('Temperature', fmt(b.get('temperature_c'), 1, ' °C')),
-            ('Current', fmt(b.get('current_ma'), 0, ' mA')),
-            ('Uptime', uptime_text(up)))):
-        x, y = 30 + i % 2 * 525, 620 + i // 2 * 165
-        card(x, y, 495, 145)
-        text(x + 30, y + 20, label, 30, MUTED)
-        text(x + 30, y + 62, value, 48, bold=True, max_width=435)
-    c = charge_conf()
-    card(30, 960, 1020, 360)
-    text(60, 980, 'Charge limit', 34, MUTED)
-    lock_pill(text, card, LOCK_CHG)
+    card(30, 170, 1020, 830)
+    col = batt_head(d, text, 60, 195, 125, b)
+    text(700, 205, 'Battery voltage', 28, MUTED)
+    text(700, 242, fmt(b.get('voltage_v'), 3, ' V'), 42, bold=True)
+    text(700, 295, 'System (VPH)', 28, MUTED)
+    text(700, 332, fmt(b.get('system_voltage_v'), 3, ' V'), 40, bold=True)
+    text(60, 345, b.get('status') or 'No battery gauge', 36, MUTED, max_width=560)
+    bar(60, 405, 960, b.get('percent'), h=26, color=col)
+    text(60, 460, 'Estimated from battery voltage' if b.get('name') else '', 28, MUTED)
+    text(80, 560, '\U000F0084', 42, CYAN, anchor='mm', icon=True)
+    text(120, 540, 'Charge limit', 36, MUTED)
+    charge_lock_button(text, card, LOCK_CHG)
+    conf = charge_conf()
     col = CYAN if limits_open() else LINE
     for box, label in ((LIM_MINUS, '−'), (LIM_PLUS, '+')):
         card(box[0], box[1], box[2] - box[0], box[3] - box[1], fill=BG, outline=col)
         text((box[0] + box[2]) // 2, (box[1] + box[3]) // 2, label, 72, col, bold=True, anchor='mm')
-    text(540, 1100, 'No limit' if c['target'] >= 100 else f"{c['target']}%", 80, bold=True, anchor='mm')
-    on = c['drain'] and c['target'] < 100
-    text(60, 1215, 'Drain down to the limit', 38, TEXT if c['target'] < 100 else MUTED)
-    text(60, 1262, 'on: runs on battery when above it' if c['drain'] else 'off: above the limit it just stops charging',
-         26, MUTED)
-    d.rounded_rectangle((880 * P, 1225 * P, 1010 * P, 1285 * P), 30 * P, fill=GREEN if on else LINE)
-    d.ellipse(((950 if on else 885) * P, 1230 * P, (1005 if on else 940) * P, 1280 * P), fill=TEXT)
+    text(540, 710, 'No limit' if conf['target'] >= 100 else f"{conf['target']}%", 78, bold=True, anchor='mm')
+    text(80, 865, '\U000F0553', 38, CYAN, anchor='mm', icon=True)
+    text(120, 835, 'USB power stays available' if conf['target'] < 100 else 'Charge limit disabled', 28, TEXT)
+    hint = 'Charging pauses at the limit until USB is unplugged or the limit is raised.' if conf['target'] < 100 else 'Normal charging; temperature protection remains active.'
+    text(120, 878, hint, 24, MUTED, max_width=880)
+
+    up = data.get('uptime_seconds')
+    usb_current = b.get('usb_current_ma')
+    current = usb_current if usb_current is not None else b.get('current_ma')
+    for i, (label, value, glyph) in enumerate((
+            ('USB input voltage', fmt(b.get('usb_voltage_v'), 3, ' V'), '\U000F0241'),
+            ('Temperature', fmt(b.get('temperature_c'), 1, ' °C'), '\U000F050F'),
+            ('USB input current' if usb_current is not None else 'Current',
+             fmt(current, 0, ' mA') if current is not None else 'unavailable', '\U000F095C'),
+            ('Uptime', uptime_text(up), '\U000F0954'))):
+        x, y = 30 + i % 2 * 525, 1030 + i // 2 * 160
+        card(x, y, 495, 145)
+        text(x + 52, y + 48, glyph, 40, CYAN, anchor='mm', icon=True)
+        text(x + 95, y + 20, label, 30, MUTED, max_width=360)
+        text(x + 95, y + 62, value, 48, bold=True, max_width=370)
     th = data.get('thermal') or {}
     tg = tg_conf()
+    hot = th.get('over', 0) > 0
+    card(30, 1350, 1020, 240, outline='#ff6b6b')
+    text(80, 1395, '\U000F0026', 46, '#ff6b6b', anchor='mm', icon=True)
+    text(120, 1375, 'Thermal guard', 36, MUTED)
     if th.get('sensor'):
-        hot = th.get('over', 0) > 0
-        card(30, 1350, 1020, 240, outline=AMBER if hot else None)
-        text(60, 1375, 'Thermal guard', 36, MUTED)
-        text(1020, 1368, f"{th['sensor'].split(':')[-1].removesuffix('-thermal')} {th['temp_c']:.1f} °C", 44, AMBER if hot else TEXT, bold=True, anchor='ra', max_width=650)
+        sensor = th['sensor'].split(':')[-1].removesuffix('-thermal')
+        reading = f"{sensor} · {fmt(th.get('temp_c'), 1, ' °C')}"
+        text(1020, 1375, reading, 38, AMBER if hot else TEXT, bold=True, anchor='ra', max_width=650)
         text(60, 1430, th.get('last_event') or 'no thermal events', 30, AMBER if hot else MUTED, max_width=960)
         if th.get('charge_mode'):
             text(60, 1480, f"charger: {th['charge_mode']}", 30, MUTED)
+    else:
+        text(60, 1435, 'Temperature reading unavailable', 32, AMBER)
+        if th.get('last_event'):
+            text(60, 1480, th['last_event'], 28, MUTED, max_width=960)
     text(60, 1535, f"off at {tg['batt_max']} °C batt · {tg['soc_max']} °C CPU · {tg['hold_s']} s  ›", 28, MUTED)
     for act, (x0, y0, x1, y1) in POWER_BTNS:
-        card(x0, y0, x1 - x0, y1 - y0, outline=AMBER if act == 'poweroff' else CYAN)
-        text((x0 + x1) // 2, (y0 + y1) // 2, CONFIRM_TEXT[act][0], 56, bold=True, anchor='mm')
+        color = AMBER if act == 'poweroff' else CYAN
+        glyph = '\U000F0902' if act == 'poweroff' else '\U000F0709'
+        card(x0, y0, x1 - x0, y1 - y0, outline=color)
+        text(x0 + 80, (y0 + y1) // 2, glyph, 54, color, anchor='mm', icon=True)
+        text((x0 + x1) // 2 + 35, (y0 + y1) // 2, CONFIRM_TEXT[act][0], 56, bold=True,
+             anchor='mm', max_width=340)
     x0, y0, x1, y1 = FREEZE_BTN
     fr = freeze_reboot()
     card(x0, y0, x1 - x0, y1 - y0)
-    text(60, y0 + 25, 'Reboot on freeze', 38)
-    text(60, y0 + 80, 'on a kernel lockup: panic, reboot after 10 s' if fr is not None else 'unavailable', 26, MUTED)
+    text(85, y0 + 52, '\U000F0901', 46, CYAN, anchor='mm', icon=True)
+    text(125, y0 + 25, 'Reboot on freeze', 38)
+    text(125, y0 + 80, 'on a kernel lockup: panic, reboot after 10 s' if fr is not None else 'unavailable', 26, MUTED)
     d.rounded_rectangle((880 * P, (y0 + 45) * P, 1010 * P, (y0 + 105) * P), 30 * P, fill=GREEN if fr else LINE)
     d.ellipse(((950 if fr else 885) * P, (y0 + 50) * P, (1005 if fr else 940) * P, (y0 + 100) * P), fill=TEXT)
-    x0, y0, x1, y1 = PERF_CARD
-    card(x0, y0, x1 - x0, y1 - y0)
-    text(60, y0 + 25, 'Audio & performance  ›', 38)
-    text(60, y0 + 80, 'speaker volume and gain, test tone, CPU/GPU clocks', 26, MUTED)
     return image
 
 
@@ -2122,37 +2283,46 @@ def step_list(values, cur, sign):
     return values[max(0, min(len(values) - 1, i + sign))]
 
 
-def perf_rows():
-    """[(key, label, value text, governor or None)] for the Audio & performance page."""
-    a, g = dash('audio'), dash('gpu')
-    ai = a.audio_info() if a else {'available': False}
-    gi = g.gpu_info(Path('/sys')) if g else {'available': False}
+def perf_rows(kind, gpu_info=None):
+    """[(key, label, value text, governor or None)] for one Audio or CPU/GPU page."""
+    rows = PERF_ROWS[:2] if kind == 'audio' else PERF_ROWS[2:]
+    a = dash('audio') if kind == 'audio' else None
+    ai = a.audio_info() if a else {}
+    if gpu_info is None:
+        g = dash('gpu') if kind == 'perf' else None
+        gpu_info = g.gpu_info(Path('/sys')) if g else {}
     out = []
-    for key, label in PERF_ROWS:
+    for key, label in rows:
         if key == 'volume':
             out.append((key, label, f"{ai['volume']}%" if ai.get('volume') is not None else 'no sound card', None))
         elif key == 'gain':
             out.append((key, label, ai['gains'][ai['gain']] if ai.get('gain') is not None else '–', None))
         elif key == 'gpu':
-            out.append((key, label, f"{gi['max_clock_mhz']:.0f} MHz" if gi.get('max_clock_mhz') else '–', gi.get('governor')))
+            out.append((key, label, f"{gpu_info['max_clock_mhz']:.0f} MHz" if gpu_info.get('max_clock_mhz') else '–', gpu_info.get('governor')))
         else:
             c = cpu_policy(key)
             out.append((key, label, f"{c['max'] / 1e6:.2f} GHz" if c else '–', c and c['gov']))
     return out
 
 
-def perf_btns(i):
-    y = 170 + i * 225
+def perf_btns(i, kind='audio'):
+    y = (170 if kind == 'audio' else 730) + i * 225
     return (60, y + 70, 260, y + 195), (820, y + 70, 1020, y + 195), (620, y + 8, 1040, y + 62)   # -, +, governor
 
 
-def perf_tap(x, y):
-    """Applies a tap on the Audio & performance page; returns the toast text or None. CPU/GPU settings reset at reboot."""
-    if hit(TONE_BTN, x, y):
+def perf_tap(kind, x, y):
+    """Apply an Audio or CPU/GPU tap; CPU/GPU settings reset at reboot."""
+    if kind == 'audio' and hit(AUDIO_SPEAKER_BTN, x, y):
+        a = dash('audio')
+        if not a:
+            return 'dashboard audio module missing'
+        return a.toggle_bottom_speaker()[1]
+    if kind == 'audio' and hit(TONE_BTN, x, y):
         a = dash('audio')
         return a.play_tone()[1] if a else 'dashboard audio module missing'
-    for i, (key, _) in enumerate(PERF_ROWS):
-        minus, plus, govb = perf_btns(i)
+    rows = PERF_ROWS[:2] if kind == 'audio' else PERF_ROWS[2:]
+    for i, (key, _) in enumerate(rows):
+        minus, plus, govb = perf_btns(i, kind)
         sign = -1 if hit(minus, x, y) else 1 if hit(plus, x, y) else 0
         if not sign and not (hit(govb, x, y) and key not in ('volume', 'gain')):
             continue
@@ -2193,10 +2363,24 @@ def page_perf(w, data):
     image = Image.new('RGB', IMG, BG)
     d, text, card, bar = tools(image)
     back_btn(text, card)
-    text(290, 48, 'Audio & performance', 56, bold=True)
-    for i, (key, label, value, gov) in enumerate(perf_rows()):
-        y = 170 + i * 225
-        minus, plus, govb = perf_btns(i)
+    audio = w['kind'] == 'audio'
+    text(290, 48, 'Audio' if audio else 'CPU & GPU performance', 56, bold=True, max_width=760)
+    gi = {}
+    if not audio:
+        g = dash('gpu')
+        gi = g.gpu_info(Path('/sys')) if g else {}
+        card(30, 170, 1020, 460)
+        draw_cores(d, text, bar, data)
+        card(30, 640, 1020, 70)
+        text(80, 675, '\U000F061A', 44, CYAN, anchor='mm', icon=True)
+        text(130, 657, 'GPU current clock', 30, MUTED)
+        gpu_clock = f"{gi['clock_mhz']:.0f} MHz" if gi.get('clock_mhz') is not None else \
+            'Asleep' if gi.get('available') and gi.get('power_state') == 'suspended' else 'unavailable'
+        text(1020, 656, gpu_clock, 40, bold=True, anchor='ra')
+    rows = perf_rows(w['kind'], gi if not audio else None)
+    for i, (key, label, value, gov) in enumerate(rows):
+        y = (170 if audio else 730) + i * 225
+        minus, plus, govb = perf_btns(i, w['kind'])
         card(30, y, 1020, 205)
         text(60, y + 20, label, 34, MUTED)
         if gov:
@@ -2205,11 +2389,36 @@ def page_perf(w, data):
             card(box[0], box[1], box[2] - box[0], box[3] - box[1], fill=BG, outline=CYAN)
             text((box[0] + box[2]) // 2, (box[1] + box[3]) // 2, sym, 72, CYAN, bold=True, anchor='mm')
         text(540, y + 132, value, 64, bold=True, anchor='mm', max_width=540)
-    x0, y0, x1, y1 = TONE_BTN
-    card(x0, y0, x1 - x0, y1 - y0, outline=CYAN)
-    text(540, (y0 + y1) // 2, 'Play test tone', 48, bold=True, anchor='mm')
-    text(60, 1470, 'Tap a governor to cycle it. CPU and GPU', 30, MUTED)
-    text(60, 1512, 'settings reset at reboot; audio ones persist.', 30, MUTED)
+    if audio:
+        x0, y0, x1, y1 = TONE_BTN
+        card(x0, y0, x1 - x0, y1 - y0, outline=CYAN)
+        text(540, (y0 + y1) // 2, 'Play test tone', 48, bold=True, anchor='mm')
+        text(60, 900, 'Volume and gain are saved automatically.', 30, MUTED)
+        a = dash('audio')
+        ai = a.audio_info() if a else {}
+        on = ai.get('gain') is not None and ai['gain'] > 0
+        available = ai.get('gain') is not None
+        card(30, 940, 1020, 190, outline=GREEN if on else LINE)
+        text(80, 1000, '\U000F04C3' if on else '\U000F04C4', 48,
+             GREEN if on else MUTED, anchor='mm', icon=True)
+        text(135, 970, 'Bottom speaker', 36, MUTED)
+        state = 'On' if on else 'Off' if available else 'Unavailable'
+        text(135, 1020, state, 34, GREEN if on else AMBER if available else MUTED, bold=True)
+        bx0, by0, bx1, by1 = AUDIO_SPEAKER_BTN
+        card(bx0, by0, bx1 - bx0, by1 - by0, fill=BG, outline=GREEN if on else LINE)
+        d.rounded_rectangle((805 * P, 987 * P, 985 * P, 1083 * P), 48 * P,
+                            fill=GREEN if on else LINE)
+        knob_x = 930 if on else 860
+        d.ellipse(((knob_x - 32) * P, 995 * P, (knob_x + 32) * P, 1075 * P), fill=TEXT)
+        card(30, 1160, 1020, 190, outline=LINE)
+        text(80, 1220, '\U000F04C3', 48, MUTED, anchor='mm', icon=True)
+        text(135, 1190, 'Top earpiece', 36, MUTED)
+        text(135, 1240, 'Unavailable · driver support pending', 30, MUTED, max_width=700)
+        card(800, 1190, 1000 - 800, 110, fill=BG, outline=LINE)
+        text(900, 1245, 'Unavailable', 27, MUTED, bold=True, anchor='mm')
+    else:
+        text(60, 1490, 'Tap a governor to cycle it. CPU and GPU', 30, MUTED)
+        text(60, 1532, 'clock settings reset at reboot.', 30, MUTED)
     return image
 
 
@@ -2533,14 +2742,14 @@ def selftest():
         assert file_view(f'{tmp}/a.txt')['lines'][0] == 'hello   world' and 'Binary' in file_view(f'{tmp}/b.bin')['lines'][0]
         assert file_view(f'{tmp}/c.png')['img'].size == (40, 20) and 'No preview' in file_view('/proc/kmsg')['lines'][0]
         ui = Ui()
-        ui.on_gesture(('tap', FILES_PAGE * TAB_W + 5, TAB_Y + 20), data, 0)
-        assert ui.page == FILES_PAGE and ui.sub is None
+        ui.on_gesture(('tap', MISC_PAGE * TAB_W + 5, TAB_Y + 20), data, 0)
+        assert ui.page == MISC_PAGE and ui.sub is None
         ui.render(data, False, 0)
+        ui.on_gesture(('tap', 500, 300), data, 0)                         # Folders
+        assert ui.sub is ui.files and ui.files_opened
         f = ui.files
         assert f['path'] in (HOME_DIR, '/')
-        ui.sub = f
         ui.open_dir(tmp)
-        ui.sub = None
         ui.render(data, False, 0)
         assert '.h' not in [e['name'] for e in f['ents']]
         ui.on_gesture(('tap', 355, 80), data, 0)                          # show hidden
@@ -2548,7 +2757,7 @@ def selftest():
         ui.on_gesture(('tap', 355, 80), data, 0)
         assert '.h' not in [e['name'] for e in f['ents']]
         ui.on_gesture(('tap', 500, FILE_TOP + 5), data, 0)               # sub/
-        assert f['path'] == f'{tmp}/sub' and ui.sub is None
+        assert f['path'] == f'{tmp}/sub' and ui.sub is f
         ui.on_gesture(('tap', 100, 80), data, 0)                          # back up
         assert f['path'] == tmp
         ui.on_gesture(('tap', 500, FILE_TOP + FILE_ROW + 5), data, 0)    # a.txt
@@ -2584,8 +2793,11 @@ def selftest():
         assert os.path.exists(f'{tmp}/a.txt')
         WRITABLE = ('/home/philipp', '/mnt/sd')
         assert not writable('/etc') and writable('/home/philipp') and not writable('/home/philipp', strict=True)
+        f.update(path='/', view=None, edit=False, dele=False)
+        ui.on_gesture(('tap', 100, 80), data, 0)                          # folder root returns to Misc
+        assert ui.sub is None and ui.page == MISC_PAGE
         ui.on_gesture(('swipe', 'left'), data, 0)
-        assert ui.page == FILES_PAGE + 1
+        assert ui.page == MISC_PAGE + 1
     ui = Ui()
     ui.render(data, False, 0)
     ui.on_gesture(('tap', 500, 1700), data, 0)
@@ -2604,16 +2816,15 @@ def selftest():
     assert batt_color({'percent': 30, 'status': 'Charging'}) == CYAN and batt_color({'percent': 30, 'status': 'Not charging'}) == AMBER
     globals()['CHG_CONF'] = tempfile.mkdtemp() + '/chg.json'
     ui.page = len(TABS) - 1
-    assert charge_conf() == {'target': 50, 'drain': True}
-    ui.on_gesture(('tap', 900, 1100), data, 0)
+    assert charge_conf() == {'target': 50}
+    ui.on_gesture(('tap', 920, 710), data, 0)
     assert charge_conf()['target'] == 50 and not limits_open()   # locked: + does nothing
-    ui.on_gesture(('tap', 900, 1000), data, 0)                  # lock pill
+    ui.on_gesture(('tap', 890, 575), data, 0)                  # lock pill
     assert limits_open()
-    ui.on_gesture(('tap', 900, 1100), data, 0); ui.on_gesture(('tap', 900, 1100), data, 0)
-    ui.on_gesture(('tap', 500, 1250), data, 0)
-    assert charge_conf() == {'target': 60, 'drain': False}
+    ui.on_gesture(('tap', 920, 710), data, 0); ui.on_gesture(('tap', 920, 710), data, 0)
+    assert charge_conf() == {'target': 60}
     for _ in range(20):
-        ui.on_gesture(('tap', 100, 1100), data, 0)
+        ui.on_gesture(('tap', 160, 710), data, 0)
     assert charge_conf()['target'] == 20
     ui.render(data, False, 0)
     globals()['TG_CONF'] = tempfile.mkdtemp() + '/limits.json'
@@ -2934,7 +3145,7 @@ class Display:
         self.view = 'gpu'
 
     def switch_tab(self, n):
-        # tabs 1-3 are sway workspaces (sway draws its own tab bar, sway/ttybar.py); tab 4 and no sway: VT 1
+        # tabs 2-4 are sway workspaces (sway draws its own tab bar, sway/ttybar.py); tab 1 and no sway: VT 1
         if n != OLD_TAB and gpu_on():
             self.switch_vt(GPU_VT)
             sock = next(iter(glob.glob('/run/user/*/sway-ipc.*.sock')), None)
@@ -2967,7 +3178,7 @@ class Display:
             return
         if not self.bar_on or vt != 1 or self.view == 'gpu':   # only fbcon VT 1 has the strip; sway draws its own
             return
-        vt = OLD_TAB                                              # VT 1 is the tty4 tab
+        vt = OLD_TAB                                              # VT 1 is the tty1 tab
         bh, rb = self.height // BAR_DIV, self.width * 4
         if vt not in self.bars:
             img = Image.new('RGB', (self.width, bh), '#1e1e1e')
@@ -3018,10 +3229,8 @@ class Display:
     def cycle(self,image):
         if not self.touched or self.view == 'blank':
             self.show(image)
-        elif self.view == 'dashboard' and gpu_on():
-            self.gpu()                  # sway: tabs tty1 (kernel log) - tty4
         elif self.view == 'dashboard':
-            self.terminal()             # fallback without sway: fbcon tty1
+            self.terminal()             # fbcon tty1; sway (tabs tty2-4) only via the tab strip
         else:
             self.hide()
         logging.info('Display view: %s',self.view)
@@ -3167,6 +3376,8 @@ def main():
     ui_dirty = False
     last_draw = 0.0
     detail_future = restart_future = pending = wifi_future = None
+    bt_control_future = bt_request = None
+    next_bt_state = 0.0
     next_detail = next_bar = 0.0
     dpool = ThreadPoolExecutor(max_workers=2)
 
@@ -3232,6 +3443,8 @@ def main():
                                 next_detail = 0.0
                             elif effect[0] == 'pair' and agent:
                                 agent.answer(effect[1])
+                            elif effect[0] == 'wifi' and effect[1] == bt_vis:
+                                bt_request = effect[1:]  # visibility remains responsive during a scan
                             elif effect[0] == 'wifi' and wifi_future is None:
                                 logging.info('Touch: job %s', effect[1].__name__)    # never log args (passwords)
                                 wifi_future = dpool.submit(*effect[1:])
@@ -3279,7 +3492,7 @@ def main():
                     vt = int(Path('/sys/class/tty/tty0/active').read_text().strip().removeprefix('tty'))
                 except (OSError, ValueError):
                     vt = None
-                if display.view == 'gpu' and vt == 1:   # sway's tty4 tab switched to VT 1 (mid-switch reads can show VT 8)
+                if display.view == 'gpu' and vt == 1:   # sway's tty1 tab switched to VT 1 (mid-switch reads can show VT 8)
                     display.switch_vt(vt, activate=False)
                 display.tty_bar()
                 next_bar = now + 0.25
@@ -3309,7 +3522,9 @@ def main():
                     logging.info('Job result: %s', res[1])
                     ui.toast = (res[1], now + 6)
                     extra = res[2] if len(res) > 2 else None
-                    if isinstance(extra, dict) and ui.sub is not None:     # ip_apply: back to details on success
+                    if isinstance(extra, dict) and ui.sub is not None and ui.sub['kind'] == 'bt':
+                        ui.sub.update(extra)
+                    elif isinstance(extra, dict) and ui.sub is not None:     # ip_apply: back to details on success
                         ui.sub = {'kind': 'wifi', 'info': extra} if res[0] else {**ui.sub, 'info': extra}
                     elif extra is not None and ui.sub is not None:
                         ui.sub['devs'] = extra
@@ -3320,6 +3535,27 @@ def main():
                 if refresh:                                                # new network: reload the details page
                     ui.sub['info'] = None
                     wifi_future = dpool.submit(wifi_info)
+            if bt_control_future is not None and bt_control_future.done():
+                try:
+                    res = bt_control_future.result()
+                    state = res if isinstance(res, dict) else res[2]
+                    if not isinstance(res, dict):
+                        logging.info('Bluetooth visibility: %s', res[1])
+                        ui.toast = (res[1], now + 6)
+                    if ui.sub is not None and ui.sub['kind'] == 'bt':
+                        ui.sub.update(state)
+                except Exception:
+                    logging.exception('Bluetooth visibility update failed')
+                bt_control_future, ui_dirty = None, True
+            if bt_control_future is None:
+                if bt_request is not None:
+                    logging.info('Touch: job %s', bt_request[0].__name__)
+                    bt_control_future = dpool.submit(*bt_request)
+                    bt_request = None
+                    next_bt_state = now + 2
+                elif ui.sub is not None and ui.sub['kind'] == 'bt' and now >= next_bt_state:
+                    bt_control_future = dpool.submit(bt_state)
+                    next_bt_state = now + 2
             if restart_future is not None and restart_future.done():
                 ok, msg = restart_future.result()
                 logging.info('Touch action result: %s', msg)
