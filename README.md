@@ -12,6 +12,24 @@ Tested on kernel `linux-nura-qcom-sm61x5` 7.2.3, booting slot b. No warranty: ba
 | `thermal-guard/` | Powers the phone off on sustained overheating |
 | `shell/` | bash + starship + ble.sh + fzf setup (plain-text prompt on the framebuffer console) |
 
+## Kernel and pmaports
+
+The kernel is built locally from pmaports, not the stock package:
+
+- **Kernel source:** [sm61x5-mainline/linux tag `v7.2.3-r0`](https://codeberg.org/sm61x5-mainline/linux/src/tag/v7.2.3-r0)
+  ([tarball](https://codeberg.org/sm61x5-mainline/linux/archive/v7.2.3-r0.tar.gz)), package `linux-nura-qcom-sm61x5` 7.2.3.
+  The phone runs the `-r4` build's `vmlinuz` with `dts/k7.dtb` appended.
+- **pmaports base:** [`ec98ddd`](https://gitlab.postmarketos.org/postmarketOS/pmaports/-/commit/ec98dddc8d525c874603a8e91ae6113d2b0c66d1)
+  (2026-10-12), `device/testing/device-xiaomi-laurel` + `linux-nura-qcom-sm61x5`.
+- **Local changes** (`pmaports/`): `pmaports-ec98ddd.diff` (APKBUILD changes), three dts patches (WCN3990 Wi-Fi node,
+  CDSP, MPSS for Wi-Fi; Wi-Fi also needs `qcom,msa-fixed-perm` removed, which `k7.dtb` already has), and the
+  `firmware-xiaomi-laurel-cdsp` APKBUILD.
+- **Firmware blobs are not included** (proprietary). The APKBUILD lists them; extract them from the stock
+  `modem_a` / `vendor_a` partitions or the [stock firmware archive](https://xmfirmwareupdater.com/archive/miui/laurel/).
+
+Build: apply the diff and copy the patches into a pmaports checkout at `ec98ddd`, add the firmware files, then
+`pmbootstrap build linux-nura-qcom-sm61x5 firmware-xiaomi-laurel-cdsp device-xiaomi-laurel`.
+
 ## Boot image with the dtb
 
 laurel uses `deviceinfo_append_dtb=true`, so the kernel in boot.img is `vmlinuz` + dtb.

@@ -1,0 +1,118 @@
+Subject: [PATCH] arm64: dts: qcom: sm6125: enable MPSS for WCN3990 Wi-Fi
+
+The WCN3990 firmware service (msm/modem/wlan_pd) runs on the modem DSP.
+Add the MPSS remoteproc, SMP2P and rmtfs memory (resources match the
+stock Trinket DTB and upstream SM6115), and map SM6125 in the in-kernel
+PD mapper using the SM6115 domain list.
+
+--- a/arch/arm64/boot/dts/qcom/sm6125.dtsi	2026-10-12 19:23:47.200373035 +0100
++++ b/arch/arm64/boot/dts/qcom/sm6125.dtsi	2026-10-12 19:23:47.244293430 +0100
+@@ -9,6 +9,7 @@
+ #include <dt-bindings/clock/qcom,rpmcc.h>
+ #include <dt-bindings/clock/qcom,sm6125-gpucc.h>
+ #include <dt-bindings/dma/qcom-gpi.h>
++#include <dt-bindings/firmware/qcom,scm.h>
+ #include <dt-bindings/gpio/gpio.h>
+ #include <dt-bindings/interrupt-controller/arm-gic.h>
+ #include <dt-bindings/power/qcom-rpmpd.h>
+@@ -366,6 +367,15 @@
+ 			reg = <0x1 0x3fc00000 0x0 0x400000>;
+ 			no-map;
+ 		};
++
++		rmtfs_mem: memory@89b01000 {
++			compatible = "qcom,rmtfs-mem";
++			reg = <0x0 0x89b01000 0x0 0x200000>;
++			no-map;
++
++			qcom,client-id = <1>;
++			qcom,vmid = <QCOM_SCM_VMID_MSS_MSA QCOM_SCM_VMID_NAV>;
++		};
+ 	};
+ 
+ 	smem: smem {
+@@ -374,6 +384,26 @@
+ 		hwlocks = <&tcsr_mutex 3>;
+ 	};
+ 
++	smp2p-mpss {
++		compatible = "qcom,smp2p";
++		qcom,smem = <435>, <428>;
++		interrupts = <GIC_SPI 70 IRQ_TYPE_EDGE_RISING>;
++		mboxes = <&apcs_glb 14>;
++		qcom,local-pid = <0>;
++		qcom,remote-pid = <1>;
++
++		modem_smp2p_out: master-kernel {
++			qcom,entry-name = "master-kernel";
++			#qcom,smem-state-cells = <1>;
++		};
++
++		modem_smp2p_in: slave-kernel {
++			qcom,entry-name = "slave-kernel";
++			interrupt-controller;
++			#interrupt-cells = <2>;
++		};
++	};
++
+ 	smp2p-cdsp {
+ 		compatible = "qcom,smp2p";
+ 		qcom,smem = <94>, <432>;
+@@ -1707,6 +1737,34 @@
+ 			#iommu-cells = <2>;
+ 		};
+ 
++		remoteproc_mpss: remoteproc@6080000 {
++			compatible = "qcom,sm6115-mpss-pas";
++			reg = <0x0 0x06080000 0x0 0x10000>;
++			firmware-name = "qcom/sm6125/xiaomi/laurel/modem.mdt";
++			interrupts-extended = <&intc GIC_SPI 307 IRQ_TYPE_EDGE_RISING>,
++					      <&modem_smp2p_in 0 IRQ_TYPE_EDGE_RISING>,
++					      <&modem_smp2p_in 1 IRQ_TYPE_EDGE_RISING>,
++					      <&modem_smp2p_in 2 IRQ_TYPE_EDGE_RISING>,
++					      <&modem_smp2p_in 3 IRQ_TYPE_EDGE_RISING>,
++					      <&modem_smp2p_in 7 IRQ_TYPE_EDGE_RISING>;
++			interrupt-names = "wdog", "fatal", "ready", "handover",
++					  "stop-ack", "shutdown-ack";
++			clocks = <&rpmcc RPM_SMD_XO_CLK_SRC>;
++			clock-names = "xo";
++			power-domains = <&rpmpd SM6125_VDDCX>;
++			memory-region = <&modem_mem>;
++			qcom,smem-states = <&modem_smp2p_out 0>;
++			qcom,smem-state-names = "stop";
++			status = "disabled";
++
++			glink-edge {
++				interrupts = <GIC_SPI 68 IRQ_TYPE_EDGE_RISING>;
++				label = "mpss";
++				qcom,remote-pid = <1>;
++				mboxes = <&apcs_glb 12>;
++			};
++		};
++
+ 		remoteproc_cdsp: remoteproc@b300000 {
+ 			compatible = "qcom,sm6115-cdsp-pas";
+ 			reg = <0x0 0x0b300000 0x0 0x4040>;
+--- a/arch/arm64/boot/dts/qcom/sm6125-xiaomi-laurel-sprout.dts	2026-10-12 19:23:47.209358030 +0100
++++ b/arch/arm64/boot/dts/qcom/sm6125-xiaomi-laurel-sprout.dts	2026-10-12 19:23:47.244418140 +0100
+@@ -668,6 +668,10 @@
+ 	status = "okay";
+ };
+ 
++&remoteproc_mpss {
++	status = "okay";
++};
++
+ &remoteproc_cdsp {
+ 	status = "okay";
+ };
+--- a/drivers/soc/qcom/qcom_pd_mapper.c	2026-10-12 19:23:47.216377098 +0100
++++ b/drivers/soc/qcom/qcom_pd_mapper.c	2026-10-12 19:23:47.244506490 +0100
+@@ -614,6 +614,7 @@
+ 	{ .compatible = "qcom,sdm845", .data = sdm845_domains, },
+ 	{ .compatible = "qcom,sm4250", .data = sm6115_domains, },
+ 	{ .compatible = "qcom,sm6115", .data = sm6115_domains, },
++	{ .compatible = "qcom,sm6125", .data = sm6115_domains, },
+ 	{ .compatible = "qcom,sm6350", .data = sm6350_domains, },
+ 	{ .compatible = "qcom,sm7150", .data = sm7150_domains, },
+ 	{ .compatible = "qcom,sm7225", .data = sm6350_domains, },

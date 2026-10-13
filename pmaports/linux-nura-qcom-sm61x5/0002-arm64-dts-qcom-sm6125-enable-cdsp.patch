@@ -1,0 +1,79 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+Subject: [PATCH] arm64: dts: qcom: enable SM6125 CDSP QRTR transport
+
+Use the stock Trinken CDSP SMP2P resources and the SM6115 PAS driver
+for the SM6125 CDSP, then enable it for Xiaomi Laurel Sprout.
+
+--- a/arch/arm64/boot/dts/qcom/sm6125.dtsi
++++ b/arch/arm64/boot/dts/qcom/sm6125.dtsi
+@@ -372,6 +372,26 @@
+ 		compatible = "qcom,smem";
+ 		memory-region = <&smem_mem>;
+ 		hwlocks = <&tcsr_mutex 3>;
++	};
++
++	smp2p-cdsp {
++		compatible = "qcom,smp2p";
++		qcom,smem = <94>, <432>;
++		interrupts = <GIC_SPI 263 IRQ_TYPE_EDGE_RISING>;
++		mboxes = <&apcs_glb 30>;
++		qcom,local-pid = <0>;
++		qcom,remote-pid = <5>;
++
++		cdsp_smp2p_out: master-kernel {
++			qcom,entry-name = "master-kernel";
++			#qcom,smem-state-cells = <1>;
++		};
++
++		cdsp_smp2p_in: slave-kernel {
++			qcom,entry-name = "slave-kernel";
++			interrupt-controller;
++			#interrupt-cells = <2>;
++		};
+ 	};
+ 
+ 	soc@0 {
+@@ -1687,6 +1707,33 @@
+ 			#iommu-cells = <2>;
+ 		};
+ 
++		remoteproc_cdsp: remoteproc@b300000 {
++			compatible = "qcom,sm6115-cdsp-pas";
++			reg = <0x0 0x0b300000 0x0 0x4040>;
++			firmware-name = "qcom/sm6125/xiaomi/laurel/cdsp.mdt";
++			interrupts-extended = <&intc GIC_SPI 265 IRQ_TYPE_EDGE_RISING>,
++					      <&cdsp_smp2p_in 0 IRQ_TYPE_EDGE_RISING>,
++					      <&cdsp_smp2p_in 1 IRQ_TYPE_EDGE_RISING>,
++					      <&cdsp_smp2p_in 2 IRQ_TYPE_EDGE_RISING>,
++					      <&cdsp_smp2p_in 3 IRQ_TYPE_EDGE_RISING>;
++			interrupt-names = "wdog", "fatal", "ready",
++					  "handover", "stop-ack";
++			clocks = <&rpmcc RPM_SMD_XO_CLK_SRC>;
++			clock-names = "xo";
++			power-domains = <&rpmpd SM6125_VDDCX>;
++			memory-region = <&cdsp_mem>;
++			qcom,smem-states = <&cdsp_smp2p_out 0>;
++			qcom,smem-state-names = "stop";
++			status = "disabled";
++
++			glink-edge {
++				interrupts = <GIC_SPI 261 IRQ_TYPE_EDGE_RISING>;
++				label = "cdsp";
++				qcom,remote-pid = <5>;
++				mboxes = <&apcs_glb 28>;
++			};
++		};
++
+ 		wifi: wifi@c800000 {
+ 			compatible = "qcom,wcn3990-wifi";
+ 			reg = <0x0 0x0c800000 0x0 0x800000>;
+--- a/arch/arm64/boot/dts/qcom/sm6125-xiaomi-laurel-sprout.dts
++++ b/arch/arm64/boot/dts/qcom/sm6125-xiaomi-laurel-sprout.dts
+@@ -667,3 +667,7 @@
+ 	vdd-3.3-ch0-supply = <&vreg_l23a>;
+ 	status = "okay";
+ };
++
++&remoteproc_cdsp {
++	status = "okay";
++};

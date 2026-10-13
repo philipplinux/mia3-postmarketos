@@ -1,0 +1,57 @@
+diff --git a/device/testing/device-xiaomi-laurel/APKBUILD b/device/testing/device-xiaomi-laurel/APKBUILD
+index dfef654..6c2b801 100644
+--- a/device/testing/device-xiaomi-laurel/APKBUILD
++++ b/device/testing/device-xiaomi-laurel/APKBUILD
+@@ -3,15 +3,19 @@ maintainer="Barnabas Czeman <barnabas.czeman@postmarketos.org>"
+ pkgname=device-xiaomi-laurel
+ pkgdesc="Xiaomi Mi A3"
+ pkgver=6
+-pkgrel=0
++pkgrel=2
+ url="https://nura.eco"
+ license="MIT"
+ arch="aarch64"
+ options="!check !archcheck"
+ depends="
+ 	android-tools-mkbootimg
++	firmware-xiaomi-laurel-cdsp
+ 	linux-nura-qcom-sm61x5
+ 	postmarketos-base
++	qrtr
++	rmtfs
++	tqftpserv
+ "
+ makedepends="devicepkg-dev"
+ source="
+diff --git a/device/testing/linux-nura-qcom-sm61x5/APKBUILD b/device/testing/linux-nura-qcom-sm61x5/APKBUILD
+index 8414af7..a6c4f11 100644
+--- a/device/testing/linux-nura-qcom-sm61x5/APKBUILD
++++ b/device/testing/linux-nura-qcom-sm61x5/APKBUILD
+@@ -3,7 +3,7 @@ maintainer="Barnabas Czeman <barnabas.czeman@postmarketos.org>"
+ _flavor="nura-qcom-sm61x5"
+ pkgname=linux-$_flavor
+ pkgver=7.2.3
+-pkgrel=0
++pkgrel=5
+ pkgdesc="Close to mainline linux kernel for Qualcomm Snapdragon SM61x5"
+ arch="aarch64"
+ _carch="arm64"
+@@ -34,6 +34,9 @@ _tag="$pkgver-r0"
+ 
+ source="
+ 	$pkgname-v$_tag.tar.gz::https://codeberg.org/sm61x5-mainline/linux/archive/v$_tag.tar.gz
++	0001-arm64-dts-qcom-sm6125-add-wcn3990-wifi.patch
++	0002-arm64-dts-qcom-sm6125-enable-cdsp.patch
++	0003-arm64-dts-qcom-sm6125-enable-mpss-for-wifi.patch
+ 	config-$_flavor.aarch64
+ "
+ builddir="$srcdir/linux"
+@@ -70,5 +73,8 @@ package() {
+ }
+ sha512sums="
+ 2a6393212c413cf3812c2293d074fc9b7f82dec01c740251fe390b0633484b247e95e886493cbec77e6ef9741aebe0a4134c2218672424b332ae119c22566f23  linux-nura-qcom-sm61x5-v7.2.3-r0.tar.gz
++78bb22dd105907c889ab946f4acbae4fa1d3fae4833977ecbae9548fb9d0f7be82c1056c1b306cc47a773048bf07c007893e2aa0b466fed92f887805e1f958ee  0001-arm64-dts-qcom-sm6125-add-wcn3990-wifi.patch
++7bd1ba4b50a7e4cec310cd03e1c5f4e918cc10b0af6890e4befd52f77d35b687296b4655c6e0bd555782e645e293b09d75cb7ccff90b3ee29bac13581f29c649  0002-arm64-dts-qcom-sm6125-enable-cdsp.patch
++8f9f079759572c0ad5d3ef752cf0f9876e4581bf3aa54318d3b0ab519bae18877791dd26973baad6d86a60e57c659e030566e676d4a25800524e7c15103e869f  0003-arm64-dts-qcom-sm6125-enable-mpss-for-wifi.patch
+ c84672dd702acf5cdad7ed57ffa6aaeb4d0cc3c71d1ef4c9f5a1a2450e0f3d085f331c4489ec345c63a89f753c882ce42ba0d661928cd2d4c393f1144286d2b1  config-nura-qcom-sm61x5.aarch64
+ "
