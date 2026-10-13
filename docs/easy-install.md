@@ -53,18 +53,19 @@ The phone only accepts a new system after you unlock it.
 After about a minute the phone shows a dashboard on its screen. Android is still on the phone, hidden on the
 other "slot", in case you ever want it back.
 
-## Step 5: Log in and make it yours
+## Step 5: Make it yours, on the phone's screen
 
-Leave the phone plugged in. In the terminal:
+No computer needed for this. Tap the **Network** tab (the icons at the bottom of the screen) and:
 
-1. Type `ssh user@172.16.42.1`. Type `yes` if it asks about a fingerprint. The password is `changeme`
-   (nothing shows while you type, that is normal).
-2. **Change the password now.** Type `passwd` and follow the prompts. Everyone knows `changeme`.
-3. **Connect to Wi-Fi.** Easiest: on the phone screen, open the Network tab and pick your network. Or type
-   `sudo nmcli device wifi connect "Your Wi-Fi name" password "your Wi-Fi password"`.
-4. Type `exit` to leave.
+1. **Change the password:** tap **SSH**, type a new password on the on-screen keyboard (at least 6 characters),
+   tap **Set password**. Everyone knows the default `changeme`, so do this first.
+2. **Connect to Wi-Fi:** tap the big **Wi-Fi** card at the top, then **Change network**, pick your network,
+   type its password, tap **Connect**.
 
-That's it. After Wi-Fi is connected, the phone also works without the cable.
+That's it. You can unplug the cable now.
+
+Logging in from a computer works too: `ssh user@172.16.42.1` over the USB cable, or `ssh user@<phone address>` over
+Wi-Fi (the address is on the Network tab). The password is the one you just set.
 
 ## Using it
 
@@ -73,7 +74,7 @@ That's it. After Wi-Fi is connected, the phone also works without the cable.
 - **Web dashboard:** turn it on from the phone screen (Network tab), then open `http://<phone address>:8090` in a browser.
 - **Battery:** it stops charging at 50 % on purpose, so the battery lasts years while plugged in all the time.
 - **microSD card:** see "microSD card" in the [README](../README.md#microsd-card).
-- **Reach it from anywhere (optional):** log in and type `sudo tailscale up`, then open the link it prints.
+- **Reach it from anywhere (optional):** log in from a computer, type `sudo tailscale up` and open the link it prints.
 
 ## If something goes wrong
 

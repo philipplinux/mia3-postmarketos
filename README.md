@@ -61,11 +61,11 @@ New to this? Follow the [easy install guide](docs/easy-install.md): every click 
 1. Download `mia3-postmarketos-generic-<date>.tar.xz` from the releases page and unpack it.
 2. Boot the phone into fastboot, plug in USB.
 3. Run `sh flash.sh` in the unpacked folder and type `yes`.
-4. Wait about a minute, then run `ssh user@172.16.42.1` (password `changeme`).
-5. **Change the password:** `passwd` (it is also the sudo password).
-6. **Add your SSH key** from the PC: `ssh-copy-id user@172.16.42.1`.
-7. **Wi-Fi:** use the Network tab on the phone's screen, or `sudo nmcli device wifi connect <ssid> password <psk>`.
-8. **Tailscale (optional):** `sudo tailscale up` and open the printed link. It is installed but not logged in.
+4. Wait about a minute. On the phone's screen, open the **Network** tab:
+   - **SSH:** set a new password (default `changeme`, also the sudo password)
+   - **Wi-Fi card → Change network:** pick your network and connect
+5. **Your SSH key (optional):** `ssh-copy-id user@172.16.42.1` over USB.
+6. **Tailscale (optional):** log in, `sudo tailscale up` and open the printed link. It is installed but not logged in.
 
 Everything else is already set up: kernel, `k7.dtb`, firmware from the official ROM, status display, web dashboard
 (port 8090), 50 % charge limit, fuel gauge, CPU/GPU sensors, speaker, thermal guard, bash + starship + ble.sh, sway.
