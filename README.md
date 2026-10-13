@@ -131,7 +131,7 @@ Binds `0.0.0.0:8090` but answers only on the interfaces switched on in the phone
 ## Shell
 
 Power key cycles: dashboard → tty1 console (fbcon, plain prompt, buffyboard touch keyboard) → **kmscon** on tty2
-(GPU-rendered, Nerd Font prompt, needs a USB/Bluetooth keyboard: buffyboard can't draw over it) → blank.
+(Nerd Font prompt, `--no-drm --no-mouse`: draws on fbdev so the buffyboard touch keyboard shows on top) → blank.
 kmscon: `apk add kmscon kmscon-systemd`, `display/kmsconvt@tty2.conf` → `/etc/systemd/system/kmsconvt@tty2.service.d/mia3.conf`,
 `systemctl enable --now kmsconvt@tty2`. The display drops DRM master at start so kmscon can take it.
 

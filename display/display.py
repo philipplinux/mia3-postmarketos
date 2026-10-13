@@ -241,7 +241,7 @@ POWER_BTNS = (('reboot', (30, 1620, 520, 1820)), ('poweroff', (560, 1620, 1050, 
 LIST_TOP = 150
 LIST_BOTTOM = TAB_Y - 10
 DRAG_PX = 40
-KMSCON_VT = 2        # power key: dashboard -> tty1 console + touch keyboard -> kmscon (if running) -> blank
+KMSCON_VT = 2        # power key: dashboard -> tty1 console -> kmscon (if running) -> blank; touch keyboard on both
 VOL_STEP = 600        # volume keys scroll lists by this many px
 SWIPE_PX = 250
 LONG_S = 0.8
@@ -2742,8 +2742,7 @@ class Display:
         self.keyboard(True)
 
     def kmscon(self):
-        # GPU terminal on tty2 (kmsconvt@tty2): takes DRM master while shown, no touch keyboard there.
-        self.keyboard(False)
+        # kmscon terminal on tty2 (kmsconvt@tty2, --no-drm): draws on fbdev, so buffyboard stays on top.
         fcntl.ioctl(self.tty,0x5606,KMSCON_VT)  # VT_ACTIVATE; no wait, a dead kmscon must not hang the loop
         self.view = 'kmscon'
 
