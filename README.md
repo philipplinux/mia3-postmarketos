@@ -135,13 +135,13 @@ wvkbd grim`) with a tab bar at the top (`sway/ttybar.py`, swaybar status blocks;
 
 | Tab | What |
 |---|---|
-| tty1 | foot running `journalctl -kf` (live kernel log, scrollable; a panic still draws over sway via `CONFIG_DRM_PANIC`) |
+| tty1 | foot running `kmsg.sh` (`journalctl -kf`, live kernel log, scrollable, buffyboard input lines hidden; a panic still draws over sway via `CONFIG_DRM_PANIC`) |
 | tty2, tty3 | foot shells |
 | tty4 | the old fbcon console on VT 1 (raw kernel messages, buffyboard keyboard); swipe down from the top for its tab strip |
 
-`install.sh` sets it up: `sway/config` + `sway/ttybar.py` → `~/.config/sway/`, `sway/foot.ini` → `~/.config/foot/`,
+`install.sh` sets it up: `sway/config`, `ttybar.py`, `respawn.sh`, `kmsg.sh` → `~/.config/sway/`, `sway/foot.ini` → `~/.config/foot/`,
 `display/getty-autologin.conf` → `getty@tty{1,5}.service.d/autologin.conf`, getty on tty2-4 disabled;
-`.bash_profile` execs sway on tty5. wvkbd and the foot tabs restart themselves if they die. foot keeps 5000 lines of scrollback; the volume keys scroll it. Without sway running
+`.bash_profile` execs sway on tty5. wvkbd and the foot tabs restart themselves if they die (`respawn.sh`, only while sway is on screen). foot keeps 5000 lines of scrollback; the volume keys scroll it. Without sway running
 the power key falls back to the fbcon console. kmscon was dropped: 10.0 is DRM-only, nothing could draw over it.
 
 Copy `shell/.bashrc` and `shell/.bash_profile` to `~`, `shell/bashrc.d/` to `~/.bashrc.d/`, `shell/starship.toml` to `~/.config/`.
