@@ -3,6 +3,8 @@
 A Xiaomi Mi A3 (model M1906F9SH, codename `laurel_sprout`, SoC SM6125) running postmarketOS edge as a headless home server with a touch dashboard on its own screen.
 Tested on kernel `linux-nura-qcom-sm61x5` 7.2.3, booting slot b. No warranty: back up your boot image first.
 
+**Discussion:** [XDA thread](https://xdaforums.com/t/linux-nura-postmarketos-mi-a3-as-a-linux-mainline-7-2-home-server-battery-wi-fi-bt-ir-gpu-speaker-touch-dashboard.4804894/) · [r/mobilelinux](https://www.reddit.com/r/mobilelinux/comments/1x4u0l2/xiaomi_mi_a3_mainline72_on_nura_postmarketos/)
+
 
 [![Buy me a beer?](https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20beer%3F&emoji=%F0%9F%8D%BA&slug=philipplinux&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff)](https://www.buymeacoffee.com/philipplinux)
 
