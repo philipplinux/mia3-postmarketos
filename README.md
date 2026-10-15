@@ -36,6 +36,14 @@ Web dashboard (port 8090):
 | Fingerprint | not attempted | |
 | Cameras | no | |
 
+## Changelog
+
+### Unreleased — 2026-10-15
+
+- **SSH account rename:** on the phone, open Network → SSH, tap the username, enter a new name and tap **Rename account**. The account keeps its UID, home directory, password and SSH keys; console autologin follows the new name. Tap the username again or Back to cancel. Use the new username for subsequent SSH connections (update any saved SSH client configuration).
+- Username validation, duplicate-name checks and rollback on console-autologin update failure are covered by the display selftest.
+- Userspace display update only; no kernel or release image rebuild. Existing published images do not include this change yet.
+
 ## Three ways to install
 
 ![Install paths](docs/install-paths.svg)

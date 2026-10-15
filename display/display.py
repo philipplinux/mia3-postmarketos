@@ -488,6 +488,64 @@ def set_password(user, password):
     return ok, f'Password set for {user}' if ok else (msg.splitlines() or ['failed'])[-1][:80]
 
 
+def write_login_config(path, content):
+    st = path.stat()
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix='.autologin-')
+    try:
+        with os.fdopen(fd, 'w') as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+            os.fchmod(stream.fileno(), st.st_mode & 0o777)
+            os.fchown(stream.fileno(), st.st_uid, st.st_gid)
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
+
+def rename_user(user, name):
+    """Rename a login without moving its home or changing its numeric identity."""
+    if not re.fullmatch(r'[a-z_][a-z0-9_-]{0,31}', name):
+        return False, 'Use 1–32 lowercase letters, digits, _ or -; start with a letter or _'
+    try:
+        account = pwd.getpwnam(user)
+        if account.pw_uid < 1000 or account.pw_uid >= 65534 or account.pw_dir != HOME_DIR:
+            return False, 'Only the phone login account can be renamed'
+        if name == user:
+            return False, 'Choose a different username'
+        if any(u.pw_name == name for u in pwd.getpwall()):
+            return False, 'That username already exists'
+        configs = []
+        for path in Path('/etc/systemd/system').glob('getty@*.service.d/autologin.conf'):
+            content = path.read_text()
+            updated = re.sub(r'(?<=--autologin )' + re.escape(user) + r'(?=\s|$)', name, content)
+            if updated != content:
+                configs.append((path, content, updated))
+    except (KeyError, OSError) as exc:
+        return False, f'Cannot prepare rename: {exc}'[:100]
+    # Prefix mode permits a login-only rename while its unchanged UID/home are in use.
+    ok, msg = sh('usermod', '--prefix', '/', '--login', name, user)
+    if not ok:
+        return False, (msg.splitlines() or ['Rename failed'])[-1][:100]
+    try:
+        for path, _, updated in configs:
+            write_login_config(path, updated)
+        ok, msg = sh('systemctl', 'daemon-reload')
+        if not ok:
+            raise OSError(msg)
+    except OSError as exc:
+        rollback, _ = sh('usermod', '--prefix', '/', '--login', user, name)
+        for path, content, _ in configs:
+            try:
+                write_login_config(path, content)
+            except OSError:
+                rollback = False
+        sh('systemctl', 'daemon-reload')
+        return False, ('Rename rolled back: ' if rollback else 'Rename needs repair: ') + str(exc)[:65]
+    return True, f'Login renamed to {name}; use {name} for new SSH connections', {'user': name}
+
+
 def usb_mode():
     try:
         if not (GADGET / 'UDC').read_text().strip():
@@ -890,14 +948,18 @@ def page_ssh(w, data):
     text(60, 255, 'Up' if up else 'Down' if up is False else 'Unknown', 48, GREEN if up else AMBER, bold=True)
     btn(text, card, SSH_TOGGLE, 'Turn off' if up else 'Turn on', AMBER if up else GREEN, 44)
     card(USER_BTN[0], USER_BTN[1], USER_BTN[2] - USER_BTN[0], USER_BTN[3] - USER_BTN[1])
-    text(60, 375, 'User' + (' · tap to switch' if len(w['users']) > 1 else ''), 32, MUTED)
+    hint = 'tap again to cancel' if w.get('edit') else 'tap to rename'
+    text(60, 375, f'User · {hint}', 32, MUTED)
     text(60, 420, w['user'], 48, bold=True, max_width=960)
-    text(40, 540, f"New password for {w['user']}", 36, MUTED, max_width=1000)
+    text(40, 540, f"New {'username' if w.get('edit') else 'password'} for {w['user']}", 36, MUTED, max_width=1000)
     card(30, 600, 1020, 160, outline=CYAN)
     shown = w['pw'] if w['show'] else '•' * len(w['pw'])
     text(60, 650, shown[-34:] or ' ', 52, mono=w['show'])
-    text(1020, 800, f"{len(w['pw'])} characters (min 6)", 30, MUTED, anchor='ra')
-    btn(text, card, CONNECT_BTN, 'Set password', GREEN if len(w['pw']) >= 6 else MUTED, 56)
+    text(1020, 800, f"{len(w['pw'])} characters ({'max 32' if w.get('edit') else 'min 6'})", 30, MUTED, anchor='ra')
+    new_user = w['pw'].strip()
+    label, ready = ('Rename account', bool(new_user) and new_user != w['user']) if w.get('edit') else \
+                   ('Set password', len(w['pw']) >= 6)
+    btn(text, card, CONNECT_BTN, label, GREEN if ready else MUTED, 56)
     draw_kb(d, text, w)
     return image
 
@@ -1437,7 +1499,8 @@ class Ui:
                     return [('wifi', svc, 'tailscaled', True)]
                 if key == 'ssh':
                     users = login_users()
-                    self.sub = {'kind': 'ssh', 'users': users, 'user': users[0], 'pw': '', 'mode': 'abc', 'show': False}
+                    self.sub = {'kind': 'ssh', 'users': users, 'user': users[0], 'pw': '', 'mode': 'abc',
+                                'show': False, 'edit': False}
                 elif key == 'usb':
                     self.sub = {'kind': 'usb'}
                 elif key == 'web':
@@ -1616,7 +1679,10 @@ class Ui:
             elif w['kind'] == 'files' and w['path'] != '/':
                 self.open_dir(os.path.dirname(w['path'].rstrip('/')) or '/')
             elif w.get('edit'):
-                w['edit'] = False
+                if w['kind'] == 'ssh':
+                    w.update(edit=False, pw='', show=False)
+                else:
+                    w['edit'] = False
             else:
                 self.sub = None
             return []
@@ -1668,10 +1734,16 @@ class Ui:
                     return []
                 return [('wifi', svc, 'sshd', True)]
             if hit(USER_BTN, x, y):
-                u = w['users']
-                w['user'] = u[(u.index(w['user']) + 1) % len(u)]
+                w.update(edit=not w.get('edit'), pw='', mode='abc', show=not w.get('edit'))
             elif hit(CONNECT_BTN, x, y):
-                if len(w['pw']) >= 6:
+                if w.get('edit'):
+                    name = w['pw'].strip()
+                    if name and name != w['user']:
+                        user = w['user']
+                        w.update(edit=False, pw='', show=False)
+                        self.toast = ('Renaming account…', float('inf'))
+                        return [('wifi', rename_user, user, name)]
+                elif len(w['pw']) >= 6:
                     pw, w['pw'] = w['pw'], ''
                     self.toast = (f"Setting password for {w['user']}…", float('inf'))
                     return [('wifi', set_password, w['user'], pw)]
@@ -2665,8 +2737,26 @@ def selftest():
                                                   for k, b in kb_keys('abc') if k == key)), ndata, 4)
     for k in 'secret':
         tap(k)
-    user = ui.sub['user']
-    assert ui.on_gesture(('tap', 500, 1400), ndata, 5) == [('wifi', set_password, user, 'secret')] and ui.sub['pw'] == ''
+    ssh = ui.sub
+    assert ssh is not None
+    user = ssh['user']
+    assert ui.on_gesture(('tap', 500, 1400), ndata, 5) == [('wifi', set_password, user, 'secret')] and ssh['pw'] == ''
+    ui.on_gesture(('tap', 500, 420), ndata, 5)
+    assert ssh['edit'] and ssh['pw'] == '' and ssh['show']
+    for k in 'newlogin':
+        tap(k)
+    ui.on_gesture(('tap', 100, 80), ndata, 5)                       # Back clears a cancelled username
+    assert not ssh['edit'] and ssh['pw'] == '' and not ssh['show']
+    ui.on_gesture(('tap', 500, 420), ndata, 5)
+    for k in 'newlogin':
+        tap(k)
+    ui.on_gesture(('tap', 500, 420), ndata, 5)                       # tap username again to cancel
+    assert not ssh['edit'] and ssh['pw'] == ''                       # password form is ready again
+    ui.on_gesture(('tap', 500, 420), ndata, 5)
+    for k in 'newlogin':
+        tap(k)
+    assert ui.on_gesture(('tap', 500, 1400), ndata, 5) == [('wifi', rename_user, user, 'newlogin')]
+    assert not ssh['edit'] and ssh['user'] == user and ssh['pw'] == ''  # changed only after job success
     ui.on_gesture(('tap', 100, 80), ndata, 6)
     assert ui.sub is None
     ui.on_gesture(('tap', 500, NET_TOP + 2 * NET_ROW + 5), ndata, 6)
@@ -2830,6 +2920,51 @@ def selftest():
     ui.render(data, False, 0)
     ui.on_gesture(('tap', 100, 80), data, 0)
     assert ui.sub is None
+    from collections import namedtuple
+    from unittest.mock import patch
+    Account = namedtuple('Account', 'pw_name pw_uid pw_dir pw_shell')
+    phone_user, other_user = Account('philipp', 1000, HOME_DIR, '/bin/sh'), Account('taken', 1001, '/home/taken', '/bin/sh')
+    root_user = Account('root', 0, '/root', '/bin/sh')
+    accounts, users, calls = {'philipp': phone_user, 'root': root_user}, [phone_user], []
+    account_calls, fail_reload, reload_count = [], [False], [0]
+    real_path = Path
+
+    def fake_getpwnam(name):
+        account_calls.append(name)
+        return accounts[name]
+
+    def fake_sh(*cmd, **kwargs):
+        calls.append(cmd)
+        if cmd[0] == 'systemctl':
+            reload_count[0] += 1
+            return (not fail_reload[0] or reload_count[0] > 1), 'daemon-reload failed'
+        return True, 'ok'
+
+    with tempfile.TemporaryDirectory() as tmp:
+        systemd = real_path(tmp) / 'etc/systemd/system'
+        auto = systemd / 'getty@tty1.service.d/autologin.conf'
+        auto.parent.mkdir(parents=True)
+        original = 'ExecStart=-/sbin/agetty --autologin philipp --noclear %I $TERM\n'
+        auto.write_text(original)
+        def test_path(path):
+            return systemd if str(path) == '/etc/systemd/system' else real_path(path)
+        with patch.object(pwd, 'getpwnam', side_effect=fake_getpwnam), \
+             patch.object(pwd, 'getpwall', side_effect=lambda: list(users)), \
+             patch.object(sys.modules[__name__], 'Path', side_effect=test_path), \
+             patch.object(sys.modules[__name__], 'sh', side_effect=fake_sh):
+            assert not rename_user('philipp', 'Bad Name')[0] and not account_calls and not calls
+            users[:] = [phone_user, other_user]
+            assert not rename_user('philipp', 'taken')[0] and not calls
+            users[:] = [root_user]
+            assert not rename_user('root', 'newroot')[0] and not calls
+            users[:] = [phone_user]
+            account_calls.clear()
+            result = rename_user('philipp', 'newlogin')
+            assert result[0] and result[2] == {'user': 'newlogin'} and '--autologin newlogin' in auto.read_text()
+            auto.write_text(original)
+            calls.clear(); fail_reload[0] = True; reload_count[0] = 0
+            result = rename_user('philipp', 'rollback')
+            assert not result[0] and result[1].startswith('Rename rolled back:') and auto.read_text() == original
     print('selftest ok')
 
 
@@ -3313,8 +3448,8 @@ def main():
     hold_fired = False
     last_release = -1.0
     try:
-        user_uid = pwd.getpwnam('philipp').pw_uid
-    except KeyError:
+        user_uid = next(u.pw_uid for u in pwd.getpwall() if u.pw_dir == HOME_DIR and 1000 <= u.pw_uid < 65534)
+    except StopIteration:
         user_uid = None
     clk = os.sysconf('SC_CLK_TCK')
 
@@ -3514,13 +3649,17 @@ def main():
                     logging.info('Job result: %s', res[1])
                     ui.toast = (res[1], now + 6)
                     extra = res[2] if len(res) > 2 else None
-                    if isinstance(extra, dict) and ui.sub is not None and ui.sub['kind'] == 'bt':
+                    ssh_rename = isinstance(extra, dict) and 'user' in extra
+                    if ssh_rename:
+                        if res[0] and ui.sub is not None and ui.sub['kind'] == 'ssh':
+                            ui.sub.update(extra, users=login_users(), edit=False, pw='', show=False)
+                    elif isinstance(extra, dict) and ui.sub is not None and ui.sub['kind'] == 'bt':
                         ui.sub.update(extra)
                     elif isinstance(extra, dict) and ui.sub is not None:     # ip_apply: back to details on success
                         ui.sub = {'kind': 'wifi', 'info': extra} if res[0] else {**ui.sub, 'info': extra}
                     elif extra is not None and ui.sub is not None:
                         ui.sub['devs'] = extra
-                    if res[0]:
+                    if res[0] and not ssh_rename:
                         refresh = ui.wifi is not None and ui.sub is not None and ui.sub['kind'] == 'wifi'
                         ui.wifi = None
                 wifi_future, ui_dirty = None, True
