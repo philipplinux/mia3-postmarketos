@@ -26,29 +26,29 @@
 
   <path class="ln" d="M170 235 C200 235 200 110 230 110" marker-end="url(#a)"/>
   <rect class="g" x="232" y="58" width="200" height="104" rx="10"/>
-  <text class="gt h" x="248" y="104">3 · Generic build</text>
+  <text class="gt h" x="248" y="104">1 · Web flasher</text>
   <text class="m s" x="248" y="126">easiest · ~10 min</text>
   <path class="ln" d="M432 110 L458 110" marker-end="url(#a)"/>
   <rect class="box" x="460" y="58" width="380" height="104" rx="10"/>
-  <text class="t s" x="476" y="84" font-family="ui-monospace,monospace">web flasher (Chrome/Edge) or sh flash.sh</text>
-  <text class="gt s" x="476" y="108" xml:space="preserve">+ flash from the browser, nothing to install or build</text>
-  <text class="ot s" x="476" y="126" xml:space="preserve">− requires a credential update: change the password</text>
-  <text class="ot s" x="476" y="144" xml:space="preserve">   and add Wi-Fi via the on-screen dashboard</text>
+  <text class="t s" x="476" y="84" font-family="ui-monospace,monospace">Chrome/Edge, click Flash image</text>
+  <text class="gt s" x="476" y="108" xml:space="preserve">+ nothing to install, images download in the page</text>
+  <text class="ot s" x="476" y="126" xml:space="preserve">− change the password and add Wi-Fi</text>
+  <text class="ot s" x="476" y="144" xml:space="preserve">   via the on-screen dashboard</text>
   <path class="ln" d="M840 110 C870 110 870 235 898 235"/>
   <path class="ln" d="M170 235 C200 235 200 235 230 235" marker-end="url(#a)"/>
   <rect class="b" x="232" y="183" width="200" height="104" rx="10"/>
-  <text class="bt h" x="248" y="229">2 · Docker build</text>
-  <text class="m s" x="248" y="251">one command · ~1 h first run</text>
+  <text class="bt h" x="248" y="229">2 · ROM by hand</text>
+  <text class="m s" x="248" y="251">fastboot · ~10 min</text>
   <path class="ln" d="M432 235 L458 235" marker-end="url(#a)"/>
   <rect class="box" x="460" y="183" width="380" height="104" rx="10"/>
-  <text class="t s" x="476" y="209" font-family="ui-monospace,monospace">sh simple-install/mia3.sh</text>
-  <text class="gt s" x="476" y="233" xml:space="preserve">+ built with your own credentials, parameters and keys</text>
-  <text class="gt s" x="476" y="251" xml:space="preserve">   (user, password, SSH key, Wi-Fi) plus the full setup</text>
-  <text class="ot s" x="476" y="269" xml:space="preserve">− needs Docker and a ~1 h first build</text>
+  <text class="t s" x="476" y="209" font-family="ui-monospace,monospace">download release, sh flash.sh</text>
+  <text class="gt s" x="476" y="233" xml:space="preserve">+ same image, flashed with your own fastboot</text>
+  <text class="ot s" x="476" y="251" xml:space="preserve">− change the password and add Wi-Fi</text>
+  <text class="ot s" x="476" y="269" xml:space="preserve">   via the on-screen dashboard</text>
   <path class="ln" d="M840 235 C870 235 870 235 898 235" marker-end="url(#a)"/>
   <path class="ln" d="M170 235 C200 235 200 360 230 360" marker-end="url(#a)"/>
   <rect class="o" x="232" y="308" width="200" height="104" rx="10"/>
-  <text class="ot h" x="248" y="354">1 · From scratch</text>
+  <text class="ot h" x="248" y="354">3 · From scratch</text>
   <text class="m s" x="248" y="376">by hand · an afternoon</text>
   <path class="ln" d="M432 360 L458 360" marker-end="url(#a)"/>
   <rect class="box" x="460" y="308" width="380" height="104" rx="10"/>
