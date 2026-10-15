@@ -3,6 +3,8 @@
 A Xiaomi Mi A3 (model M1906F9SH, codename `laurel_sprout`, SoC SM6125) running postmarketOS edge as a headless home server with a touch dashboard on its own screen.
 Tested on kernel `linux-nura-qcom-sm61x5` 7.2.3, booting slot b. No warranty: back up your boot image first.
 
+**Web flasher:** [philipplinux.github.io/mia3-postmarketos](https://philipplinux.github.io/mia3-postmarketos/) · **Images:** [GitHub release](https://github.com/philipplinux/mia3-postmarketos/releases/latest), [Hugging Face](https://huggingface.co/PhilippLinux/mia3-postmarketos)
+
 **Discussion:** [XDA thread](https://xdaforums.com/t/linux-nura-postmarketos-mi-a3-as-a-linux-mainline-7-2-home-server-battery-wi-fi-bt-ir-gpu-speaker-touch-dashboard.4804894/) · [r/mobilelinux](https://www.reddit.com/r/mobilelinux/comments/1x4u0l2/xiaomi_mi_a3_mainline72_on_nura_postmarketos/)
 
 
@@ -43,7 +45,7 @@ and flash slot b + `userdata`, leaving stock Android on slot a.
 
 | Path | You need | Time | Result |
 |---|---|---|---|
-| **3. Generic ready build (easiest)** | fastboot | ~10 min | Download and flash. Requires a credential update: log in as `user` / `changeme`, change the password and add Wi-Fi via the on-screen dashboard |
+| **3. Generic ready build (easiest)** | fastboot or the web flasher (Chrome/Edge) | ~10 min | Download and flash. Requires a credential update: log in as `user` / `changeme`, change the password and add Wi-Fi via the on-screen dashboard |
 | 2. Docker build | Docker | ~1 h first run | Built with your own credentials, parameters and keys (user, password, SSH key, Wi-Fi) |
 | 1. From scratch | pmbootstrap, a kernel tree | an afternoon | Latest postmarketOS, built yourself with this repo's patches; every step by hand, see "From stock to here" |
 
@@ -60,7 +62,16 @@ sway (tabs tty2-4), both logged in automatically. The power key cycles dashboard
 
 New to this? Follow the [easy install guide](docs/easy-install.md): every click explained, Windows and Mac included.
 
-1. Download `mia3-postmarketos-generic-<date>.tar.xz` from the releases page and unpack it.
+**Web flasher (no fastboot install):** open [philipplinux.github.io/mia3-postmarketos](https://philipplinux.github.io/mia3-postmarketos/)
+in desktop Chrome or Edge, boot the phone into fastboot, plug in USB, click Connect, Download, type the confirmation and
+Flash. It runs the same steps as `flash.sh` over WebUSB, checks every image's SHA-256 first, and pulls the images from the
+[Hugging Face mirror](https://huggingface.co/PhilippLinux/mia3-postmarketos). Wait until the Activity list shows step 12
+**Done**, then continue at step 4 below. Experimental, not yet tested on hardware: if it fails, use `flash.sh`.
+
+**Or by hand:**
+
+1. Download `mia3-postmarketos-generic-<date>.tar.xz` from the releases page (or the three images from the
+   [Hugging Face mirror](https://huggingface.co/PhilippLinux/mia3-postmarketos)) and unpack it.
 2. Boot the phone into fastboot, plug in USB.
 3. Run `sh flash.sh` in the unpacked folder and type `yes`.
 4. Wait about a minute. On the phone's screen, open the **Network** tab:

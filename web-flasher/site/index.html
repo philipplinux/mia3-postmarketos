@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0a1114">
+    <link rel="icon" href="data:,">
+    <meta name="description" content="Experimental local browser flasher for the Xiaomi Mi A3 postmarketOS server image.">
+    <title>Mi A3 USB Flasher</title>
+    <link rel="stylesheet" href="./style.css">
+    <script type="module" src="./app.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to flasher</a>
+    <div class="page-shell">
+      <header class="topbar">
+        <a class="wordmark" href="#main" aria-label="Field tools home">
+          <span class="wordmark-mark" aria-hidden="true">F</span>
+          <span>FIELD TOOLS <span class="wordmark-divider">/</span> USB</span>
+        </a>
+        <span class="topbar-note"><span class="live-dot" aria-hidden="true"></span> EXPERIMENTAL</span>
+      </header>
+
+      <main id="main">
+        <section class="intro" aria-labelledby="page-title">
+          <p class="eyebrow">POSTMARKETOS <span>//</span> DEVICE INSTALLER 0.1</p>
+          <h1 id="page-title">Flash your <span>Mi A3.</span></h1>
+          <p class="intro-copy">Xiaomi Mi A3 (<code>laurel_sprout</code>) only. Writes the generic ready build over fastboot: slot b plus userdata, stock Android stays on slot a. Everything runs in this browser; nothing is uploaded.</p>
+          <p class="experimental-note"><strong>Experimental:</strong> only continue if you know how to get back. Slot a still holds stock Android: <code>fastboot set_active a</code> then <code>fastboot -w</code> gets it back, or flash a stock ROM with the <a href="https://wiki.lineageos.org/devices/laurel_sprout/install/" target="_blank" rel="noopener noreferrer">usual tools</a>.</p>
+        </section>
+
+        <div class="mia3-panel">
+          <section class="flash-card mia3-card" aria-labelledby="rom-title">
+            <div class="card-heading">
+              <div><p class="eyebrow">PHONE MUST BE IN FASTBOOT · BOOTLOADER UNLOCKED</p><h2 id="rom-title">Flash the postmarketOS server image</h2></div>
+              <span class="version-chip">MI A3 / FASTBOOT</span>
+            </div>
+            <p class="field-help">Writes <code>vbmeta.img</code> to vbmeta_b, erases dtbo_b, writes <code>rootfs.img</code> to userdata and <code>boot.img</code> to boot_b, then switches to slot b and reboots. Same steps as <code>simple-install/flash.sh</code>.</p>
+            <ol class="guide-list mia3-steps">
+              <li><span>01</span><p>Unlocked bootloader needed (<code>fastboot flashing unlock</code>, wipes the phone; see the README).</p></li>
+              <li><span>02</span><p>Power off. Hold <kbd>Volume Down</kbd> + <kbd>Power</kbd> until the FASTBOOT screen shows, then plug in USB.</p></li>
+              <li><span>03</span><p>Connect first: it tells you right away if the phone is busy. Then download the images or pick the three files you already have. Every file's size and SHA-256 is checked before anything is written.</p></li>
+            </ol>
+            <div class="connect-row">
+              <button class="button button-secondary" id="connect" type="button">Connect fastboot</button>
+              <p id="status" class="status" role="status" aria-live="polite">Put the phone in fastboot mode, then connect.</p>
+            </div>
+            <button class="button button-secondary download-button" id="download" type="button">Download the three images (~1.5 GB)</button>
+            <label class="file-picker" for="files">
+              <span class="file-picker-icon" aria-hidden="true">＋</span>
+              <span><strong>Or choose boot.img, rootfs.img, vbmeta.img</strong><small>From the GitHub release or Hugging Face</small></span>
+              <input id="files" type="file" accept=".img" multiple>
+            </label>
+            <ul class="selected-files" id="selected" aria-label="Selected image files"><li class="empty-files">No files selected</li></ul>
+            <p class="field-help" id="build-info"></p>
+            <label class="risk-check" for="risk"><input id="risk" type="checkbox"><span>I understand this <strong>erases userdata</strong> (all Android data) and replaces slot b. Login afterwards is <code>user</code> / <code>changeme</code>; I will change it.</span></label>
+            <label class="field-label confirmation-label" for="confirm">Type <code>ERASE MI A3</code> to confirm</label>
+            <input class="confirmation-input" id="confirm" type="text" placeholder="ERASE MI A3" autocomplete="off" autocapitalize="characters" spellcheck="false">
+            <div class="flash-actions">
+              <button class="button button-primary" id="flash" type="button" disabled>Flash image <span aria-hidden="true">↗</span></button>
+            </div>
+            <p class="field-help"><strong>After pressing Flash, scroll down to Activity and wait</strong> until the final step, 12, says <strong>Done</strong>. Takes a few minutes. If it stops earlier, reload the page, put the phone back in fastboot, reconnect and flash again.</p>
+            <div class="progress-row"><progress id="progress" max="100" value="0" aria-label="Flash progress">0%</progress><span id="progress-value">0%</span></div>
+            <section class="activity"><div class="activity-heading"><h3>Activity</h3><span class="activity-label">LOCAL SESSION</span></div><ol id="log" aria-label="Activity log"></ol></section>
+          </section>
+        </div>
+      </main>
+
+      <footer class="footer">
+        <span>FIELD TOOLS <span class="wordmark-divider">/</span> MI A3</span>
+        <span><a href="https://github.com/philipplinux/mia3-postmarketos/releases/tag/v2026.10.13">GITHUB RELEASE</a> · <a href="https://huggingface.co/PhilippLinux/mia3-postmarketos">HUGGING FACE</a> · <a href="https://github.com/philipplinux/mia3-postmarketos">SOURCE</a> · <a href="./THIRD-PARTY-NOTICES.txt">LICENSE NOTICES</a></span>
+      </footer>
+    </div>
+  </body>
+</html>
