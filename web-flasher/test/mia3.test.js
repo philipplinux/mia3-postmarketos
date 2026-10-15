@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { createHash } from 'node:crypto';
 import { mia3 } from '../site/mia3-manifest.js';
-import { openAsBlob } from 'node:fs';
+import { existsSync, openAsBlob } from 'node:fs';
 import { CONFIRMATION, expandedSize, fetchPinned, flash, selectImages, STEPS } from '../site/mia3.js';
 
 const original = structuredClone(mia3);
@@ -82,6 +82,6 @@ test('download falls back to the HF mirror and rejects a wrong size', async () =
 test('sparse rootfs counts its expanded size, raw files their own size', async () => {
   assert.equal(await expandedSize(new Blob(['raw'])), 3);
   const rootfs = '../simple-install/cache/out-generic/rootfs.img';
-  try { assert.equal(await expandedSize(await openAsBlob(rootfs)), 579584 * 4096); }
-  catch (error) { if (error.code !== 'ENOENT') throw error; } // build output is not in git (CI)
+  // build output is not in git, so CI only runs the raw case
+  if (existsSync(rootfs)) assert.equal(await expandedSize(await openAsBlob(rootfs)), 579584 * 4096);
 });
