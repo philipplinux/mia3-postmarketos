@@ -30,8 +30,8 @@
   <text class="m s" x="248" y="126">easiest · ~10 min</text>
   <path class="ln" d="M432 110 L458 110" marker-end="url(#a)"/>
   <rect class="box" x="460" y="58" width="380" height="104" rx="10"/>
-  <text class="t s" x="476" y="84" font-family="ui-monospace,monospace">download release tar.xz → sh flash.sh</text>
-  <text class="gt s" x="476" y="108" xml:space="preserve">+ simplicity: download and flash, nothing to build</text>
+  <text class="t s" x="476" y="84" font-family="ui-monospace,monospace">web flasher (Chrome/Edge) or sh flash.sh</text>
+  <text class="gt s" x="476" y="108" xml:space="preserve">+ flash from the browser, nothing to install or build</text>
   <text class="ot s" x="476" y="126" xml:space="preserve">− requires a credential update: change the password</text>
   <text class="ot s" x="476" y="144" xml:space="preserve">   and add Wi-Fi via the on-screen dashboard</text>
   <path class="ln" d="M840 110 C870 110 870 235 898 235"/>
