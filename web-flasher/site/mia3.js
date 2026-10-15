@@ -52,6 +52,13 @@ export function selectImages(files) {
   });
 }
 
+/** Bytes the image takes on the partition: the sparse header's block count, else the file size. @param {Blob} file */
+export async function expandedSize(file) {
+  const header = new DataView(await file.slice(0, 28).arrayBuffer());
+  return header.byteLength === 28 && header.getUint32(0, true) === 0xed26ff3a
+    ? header.getUint32(12, true) * header.getUint32(16, true) : file.size;
+}
+
 /** @typedef {{getVariable(name:string):Promise<string|null>, runCommand(command:string):Promise<unknown>,
  *   flashBlob(partition:string, blob:Blob, progress:(fraction:number)=>void):Promise<void>}} Fastboot */
 
@@ -84,10 +91,13 @@ export async function flash(fb, images, consent, report, assertSession) {
     if (digest !== image.sha256) throw Error(`SHA-256 mismatch: ${image.name}. Nothing written.`);
   }
 
-  next('Checking the partitions exist');
-  for (const partition of [...images.map(image => image.partition), 'dtbo_b']) {
-    const size = await fb.getVariable(`partition-size:${partition}`);
-    if (!size || !(parseInt(size, 16) > 0)) throw Error(`Phone has no ${partition} partition. Nothing written.`);
+  next('Checking the partitions');
+  for (const { partition, file } of [...images, { partition: 'dtbo_b', file: new Blob() }]) {
+    const size = parseInt(await fb.getVariable(`partition-size:${partition}`) ?? '', 16);
+    if (!(size > 0)) throw Error(`Phone has no ${partition} partition. Nothing written.`);
+    // flashBlob() would resize a logical partition; this recipe only knows physical ones.
+    if (await fb.getVariable(`is-logical:${partition}`) === 'yes') throw Error(`${partition} is a logical partition. Nothing written.`);
+    if (await expandedSize(file) > size) throw Error(`Image is larger than ${partition}. Nothing written.`);
   }
 
   for (const image of images) {

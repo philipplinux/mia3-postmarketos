@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { createHash } from 'node:crypto';
 import { mia3 } from '../site/mia3-manifest.js';
-import { CONFIRMATION, fetchPinned, flash, selectImages, STEPS } from '../site/mia3.js';
+import { openAsBlob } from 'node:fs';
+import { CONFIRMATION, expandedSize, fetchPinned, flash, selectImages, STEPS } from '../site/mia3.js';
 
 const original = structuredClone(mia3);
 afterEach(() => { Object.assign(mia3, structuredClone(original)); });
@@ -40,13 +41,15 @@ test('a reboot that drops USB before answering still counts as done', async () =
 });
 
 test('wrong phone, locked bootloader, bad hash, missing partition, consent or lost USB write nothing', async () => {
-  for (const reason of ['product', 'locked', 'hash', 'partition', 'consent', 'lost']) {
+  for (const reason of ['product', 'locked', 'hash', 'partition', 'logical', 'small', 'consent', 'lost']) {
     const { images, fb, calls, vars } = fixture();
     let ok = consent, assertSession = () => {};
     if (reason === 'product') vars.product = 'sdm845';
     if (reason === 'locked') vars.unlocked = 'no';
     if (reason === 'hash') mia3.images[1].sha256 = '0'.repeat(64), images[1].sha256 = '0'.repeat(64);
     if (reason === 'partition') delete vars['partition-size:dtbo_b'];
+    if (reason === 'logical') vars['is-logical:boot_b'] = 'yes';
+    if (reason === 'small') vars['partition-size:boot_b'] = '0x1';
     if (reason === 'consent') ok = { ...consent, confirmation: 'yes' };
     if (reason === 'lost') assertSession = () => { throw Error('lost'); };
     await assert.rejects(flash(fb, images, ok, () => {}, assertSession), undefined, reason);
@@ -74,4 +77,11 @@ test('download falls back to the HF mirror and rejects a wrong size', async () =
   assert.equal(await file.text(), 'KERNEL');
   assert.equal(urls[1], `${mia3.mirror}${mia3.release}/boot.img`);
   await assert.rejects(fetchPinned({ ...pin, size: 3 }, () => {}, get), /larger/);
+});
+
+test('sparse rootfs counts its expanded size, raw files their own size', async () => {
+  assert.equal(await expandedSize(new Blob(['raw'])), 3);
+  const rootfs = '../simple-install/cache/out-generic/rootfs.img';
+  try { assert.equal(await expandedSize(await openAsBlob(rootfs)), 579584 * 4096); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; } // build output is not in git (CI)
 });
