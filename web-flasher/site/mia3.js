@@ -53,6 +53,27 @@ export function selectImages(files) {
 }
 
 /**
+ * getvar with a longer timeout. android-fastboot 1.1.3 gives every getvar a fixed 10 s; right after the 1.4 GB userdata
+ * write the Mi A3 bootloader takes longer to answer the next one (step 10 stopped there twice, desktop fastboot then
+ * worked). A real unplug still fails at once: the pending USB transfer rejects. Same FAIL→null and trim as the library.
+ * @param {(command:string)=>Promise<{text:string}>} run @param {number} ms
+ */
+export function patientGetvar(run, ms = 60000) {
+  return async (/** @type {string} */ name) => {
+    /** @type {ReturnType<typeof setTimeout>|undefined} */
+    let timer;
+    const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(Error(`Timeout of ${ms} ms exceeded`)), ms); });
+    try {
+      const { text } = await Promise.race([run(`getvar:${name}`), timeout]);
+      return text?.trim() || null;
+    } catch (error) {
+      if (/** @type {any} */ (error)?.status === 'FAIL') return null;
+      throw error;
+    } finally { clearTimeout(timer); }
+  };
+}
+
+/**
  * Upload chunk size from the max-download-size reply, read like desktop fastboot: "0x…" is hex, plain digits
  * are decimal. android-fastboot 1.1.3 always reads hex, so the Mi A3's "804261888" (767 MiB) looked huge, it sent
  * 1 GiB chunks and the phone refused them ("Requested download size is more than max allowed").

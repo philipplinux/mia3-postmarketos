@@ -3,7 +3,7 @@ import { afterEach, test } from 'node:test';
 import { createHash } from 'node:crypto';
 import { mia3 } from '../site/mia3-manifest.js';
 import { existsSync, openAsBlob } from 'node:fs';
-import { CONFIRMATION, downloadSize, expandedSize, fetchPinned, flash, selectImages, STEPS } from '../site/mia3.js';
+import { CONFIRMATION, downloadSize, patientGetvar, expandedSize, fetchPinned, flash, selectImages, STEPS } from '../site/mia3.js';
 
 const original = structuredClone(mia3);
 afterEach(() => { Object.assign(mia3, structuredClone(original)); });
@@ -91,4 +91,10 @@ test('max-download-size: decimal like desktop fastboot, hex with 0x, library cap
   assert.equal(downloadSize('0x20000000'), 0x20000000);
   assert.equal(downloadSize('0x80000000'), 1024 * 1024 * 1024);
   assert.equal(downloadSize(null), 512 * 1024 * 1024);
+});
+
+test('getvar: trims, FAIL means missing, times out instead of hanging', async () => {
+  assert.equal(await patientGetvar(async () => ({ text: ' b \n' }))('current-slot'), 'b');
+  assert.equal(await patientGetvar(async () => { throw Object.assign(Error('x'), { status: 'FAIL' }); })('nope'), null);
+  await assert.rejects(patientGetvar(() => new Promise(() => {}), 20)('slow'), /Timeout of 20 ms exceeded/);
 });
