@@ -29,12 +29,15 @@ const progress = /** @type {HTMLProgressElement} */ (el('progress'));
 const log = el('log');
 /** @type {FastbootDevice|undefined} */
 let fastboot;
-/** @type {{fb: FastbootDevice|null, lost: boolean, busy: boolean, finished: boolean, images: ReturnType<typeof selectImages>|null}} */
-const st = { fb: null, lost: false, busy: false, finished: false, images: null };
+/** @type {{fb: FastbootDevice|null, lost: boolean, failed: boolean, busy: boolean, finished: boolean, images: ReturnType<typeof selectImages>|null}} */
+const st = { fb: null, lost: false, failed: false, busy: false, finished: false, images: null };
 
 const update = () => {
   connectButton.disabled = !supported || st.busy || (st.fb !== null && !st.lost);
-  connectButton.textContent = st.lost ? 'Reconnect fastboot' : 'Connect fastboot';
+  // Green connected, red failed (click to retry), orange lost mid-session (click to reconnect).
+  const state = st.lost ? 'retry' : st.fb ? 'connected' : st.failed ? 'failed' : '';
+  connectButton.dataset.state = state;
+  connectButton.textContent = { connected: 'Connected', failed: 'Failed · retry connect', retry: 'Retry connect' }[state] ?? 'Connect fastboot';
   flashButton.disabled = !supported || !st.fb || st.lost || st.busy || st.finished || !st.images || !risk.checked || confirm.value !== CONFIRMATION;
 };
 /** @param {string} text @param {number} fraction */
@@ -49,14 +52,14 @@ const report = (text, fraction = 0) => {
   }
 };
 const assertSession = () => {
-  if (st.lost || !st.fb) throw Error('USB session lost. Put the phone back in fastboot, press Reconnect, then flash again from step 1.');
+  if (st.lost || !st.fb) throw Error('USB session lost. Put the phone back in fastboot, press Retry connect, then flash again from step 1.');
 };
 
 if (!supported) report('Open this page over HTTPS in desktop Chrome or Edge for WebUSB.');
 else navigator.usb.addEventListener('disconnect', event => {
   if (st.fb && event.device === st.fb.device && !st.finished) {
     st.lost = true;
-    report('USB disconnected. The flash may be incomplete: put the phone back in fastboot, press Reconnect, then flash again from step 1.');
+    report('USB disconnected. The flash may be incomplete: put the phone back in fastboot, press Retry connect, then flash again from step 1.');
     update();
   }
 });
@@ -65,7 +68,7 @@ connectButton.addEventListener('click', async () => {
   st.busy = true; update();
   // Reconnect: drop the old session first; the flash then restarts from step 1.
   await st.fb?.device?.close().catch(() => {});
-  Object.assign(st, { fb: null, lost: false, finished: false });
+  Object.assign(st, { fb: null, lost: false, failed: false, finished: false });
   try {
     // One instance per page: each FastbootDevice keeps a USB "connect" listener that re-claims the phone on replug,
     // so a second instance would find the interface taken.
@@ -76,6 +79,7 @@ connectButton.addEventListener('click', async () => {
     st.fb = fb;
     report(`Connected (${await fb.getVariable('product') ?? 'unknown product'}). Select the images, confirm, and flash.`);
   } catch (error) {
+    st.failed = true;
     report(`${message(error)} Check the phone is in fastboot, then press Connect again.`);
   } finally { st.busy = false; update(); }
 });
@@ -120,7 +124,7 @@ flashButton.addEventListener('click', async () => {
     st.finished = true;
   } catch (error) {
     st.lost = true;
-    report(`STOPPED: ${message(error)} Put the phone back in fastboot, press Reconnect, then flash again from step 1.`);
+    report(`STOPPED: ${message(error)} Put the phone back in fastboot, press Retry connect, then flash again from step 1.`);
   } finally { st.busy = false; update(); }
 });
 risk.addEventListener('change', update);

@@ -259,3 +259,6 @@ progress::-moz-progress-bar { background: var(--teal); }
 .image-source .file-picker > span:nth-child(2) { flex: 1; }
 .image-source .file-picker input { width: 100%; max-width: 100%; margin-left: 0; }
 @media (max-width: 560px) { .image-source { grid-template-columns: 1fr; } }
+#connect[data-state="connected"], #connect[data-state="connected"]:disabled { border-color: var(--teal); background: var(--teal-dim); color: var(--teal); cursor: default; }
+#connect[data-state="failed"] { border-color: #e66b6b; color: #ff8f8f; }
+#connect[data-state="retry"] { border-color: var(--amber); color: var(--amber); }
