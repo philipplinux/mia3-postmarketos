@@ -98,3 +98,20 @@ test('getvar: trims, FAIL means missing, times out instead of hanging', async ()
   assert.equal(await patientGetvar(async () => { throw Object.assign(Error('x'), { status: 'FAIL' }); })('nope'), null);
   await assert.rejects(patientGetvar(() => new Promise(() => {}), 20)('slow'), /Timeout of 20 ms exceeded/);
 });
+
+test('a write step that times out is retried twice, then stops; other errors stop at once', async () => {
+  const { images, fb, calls } = fixture();
+  let fails = 2;
+  fb.flashBlob = async partition => {
+    if (partition === 'boot_b' && fails-- > 0) throw Error('Timeout of 60000 ms exceeded');
+    calls.push(`flash:${partition}`);
+  };
+  await flash(fb, images, consent, () => {}, () => {});
+  assert.ok(calls.includes('flash:boot_b'));
+  fails = 3;
+  await assert.rejects(flash(fb, images, consent, () => {}, () => {}), /Timeout/);
+  fb.flashBlob = async () => { fails += 1; throw Error('FAIL: bad image'); };
+  fails = 0;
+  await assert.rejects(flash(fb, images, consent, () => {}, () => {}), /bad image/);
+  assert.equal(fails, 1);
+});

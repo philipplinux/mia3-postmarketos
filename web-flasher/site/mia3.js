@@ -111,6 +111,20 @@ export async function flash(fb, images, consent, report, assertSession) {
   const say = (text, fraction = 0) => report(`Step ${step}/${STEPS}: ${text}`, fraction);
   /** @param {string} text */
   const next = text => { step += 1; assertSession(); say(text); };
+  /**
+   * Re-run a write step up to twice when the phone only stopped answering (timeout) and USB is still attached.
+   * Safe because each step rewrites its whole partition (or is an erase / set_active): repeating gives the same result.
+   * @param {string} text @param {()=>Promise<unknown>} action
+   */
+  const attempt = async (text, action) => {
+    for (let tries = 1; ; tries += 1) {
+      try { return await action(); } catch (error) {
+        if (tries > 2 || !/Timeout of \d+ ms exceeded/.test(String(/** @type {any} */ (error)?.message ?? error))) throw error;
+        assertSession();
+        say(`${text}: phone did not answer, retrying (${tries}/2)`);
+      }
+    }
+  };
 
   next('Checking the phone model');
   const product = await fb.getVariable('product');
@@ -135,14 +149,15 @@ export async function flash(fb, images, consent, report, assertSession) {
 
   for (const image of images) {
     next(`Writing ${image.name} → ${image.partition}`);
-    await fb.flashBlob(image.partition, image.file, fraction => say(`Writing ${image.name} → ${image.partition}`, fraction));
+    const text = `Writing ${image.name} → ${image.partition}`;
+    await attempt(text, () => fb.flashBlob(image.partition, image.file, fraction => say(text, fraction)));
     if (image.partition === 'vbmeta_b') {
       next('Erasing dtbo_b');
-      await fb.runCommand('erase:dtbo_b');
+      await attempt('Erasing dtbo_b', () => fb.runCommand('erase:dtbo_b'));
     }
   }
   next('Switching to slot b');
-  await fb.runCommand('set_active:b');
+  await attempt('Switching to slot b', () => fb.runCommand('set_active:b'));
   next('Rebooting');
   // The phone may drop USB before it answers; everything is already written.
   await fb.runCommand('reboot').catch(() => {});
