@@ -11,7 +11,10 @@ function el(id) {
 const message = error => {
   const text = error instanceof Error ? error.message : String(error);
   // Another program (usually the PC's own fastboot/adb) holds the USB interface.
-  return /in use|claim|access denied/i.test(text) ? `${text} Close other USB tools (adb kill-server, no running fastboot). On Linux you may need the android-udev rules.` : text;
+  if (/in use|claim|access denied/i.test(text)) return `${text} Close other USB tools (adb kill-server, no running fastboot). On Linux you may need the android-udev rules.`;
+  // The phone stopped answering (android-fastboot's "Timeout of 10000 ms exceeded") or vanished mid-transfer: almost always cable or hub.
+  if (/Timeout of \d+ ms exceeded|transfer error|device was disconnected|disconnected/i.test(text)) return `USB connection dropped: try another cable or a port directly on the PC. (${text})`;
+  return text;
 };
 
 const supported = 'usb' in navigator && window.isSecureContext;
@@ -24,11 +27,14 @@ const confirm = /** @type {HTMLInputElement} */ (el('confirm'));
 const status = el('status');
 const progress = /** @type {HTMLProgressElement} */ (el('progress'));
 const log = el('log');
+/** @type {FastbootDevice|undefined} */
+let fastboot;
 /** @type {{fb: FastbootDevice|null, lost: boolean, busy: boolean, finished: boolean, images: ReturnType<typeof selectImages>|null}} */
 const st = { fb: null, lost: false, busy: false, finished: false, images: null };
 
 const update = () => {
-  connectButton.disabled = !supported || st.busy || st.fb !== null || st.lost;
+  connectButton.disabled = !supported || st.busy || (st.fb !== null && !st.lost);
+  connectButton.textContent = st.lost ? 'Reconnect fastboot' : 'Connect fastboot';
   flashButton.disabled = !supported || !st.fb || st.lost || st.busy || st.finished || !st.images || !risk.checked || confirm.value !== CONFIRMATION;
 };
 /** @param {string} text @param {number} fraction */
@@ -43,29 +49,34 @@ const report = (text, fraction = 0) => {
   }
 };
 const assertSession = () => {
-  if (st.lost || !st.fb) throw Error('USB session lost. Reload the page before reconnecting; no automatic retry.');
+  if (st.lost || !st.fb) throw Error('USB session lost. Put the phone back in fastboot, press Reconnect, then flash again from step 1.');
 };
 
 if (!supported) report('Open this page over HTTPS in desktop Chrome or Edge for WebUSB.');
 else navigator.usb.addEventListener('disconnect', event => {
   if (st.fb && event.device === st.fb.device && !st.finished) {
     st.lost = true;
-    report('USB disconnected. The flash may be incomplete; reload before reconnecting.');
+    report('USB disconnected. The flash may be incomplete: put the phone back in fastboot, press Reconnect, then flash again from step 1.');
     update();
   }
 });
 
 connectButton.addEventListener('click', async () => {
   st.busy = true; update();
+  // Reconnect: drop the old session first; the flash then restarts from step 1.
+  await st.fb?.device?.close().catch(() => {});
+  Object.assign(st, { fb: null, lost: false, finished: false });
   try {
-    const fb = new FastbootDevice();
+    // One instance per page: each FastbootDevice keeps a USB "connect" listener that re-claims the phone on replug,
+    // so a second instance would find the interface taken.
+    const fb = fastboot ??= new FastbootDevice();
     await fb.connect();
     // Library-private hook (pinned 1.1.3): the only way to set flashBlob()'s split size. See downloadSize().
     /** @type {any} */ (fb)._getDownloadSize = async () => downloadSize(await fb.getVariable('max-download-size').catch(() => null));
     st.fb = fb;
     report(`Connected (${await fb.getVariable('product') ?? 'unknown product'}). Select the images, confirm, and flash.`);
   } catch (error) {
-    report(`${message(error)} Reload to try again.`);
+    report(`${message(error)} Check the phone is in fastboot, then press Connect again.`);
   } finally { st.busy = false; update(); }
 });
 
@@ -109,7 +120,7 @@ flashButton.addEventListener('click', async () => {
     st.finished = true;
   } catch (error) {
     st.lost = true;
-    report(`STOPPED: ${message(error)} Do not retry blindly; reload the page first.`);
+    report(`STOPPED: ${message(error)} Put the phone back in fastboot, press Reconnect, then flash again from step 1.`);
   } finally { st.busy = false; update(); }
 });
 risk.addEventListener('change', update);
