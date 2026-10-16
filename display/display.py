@@ -252,10 +252,11 @@ TG_CARD = (30, 1350, 1050, 1590)
 LOCK_CHG, LOCK_TG = (760, 520, 1020, 630), (790, 45, 1040, 125)   # charge limit card / Thermal guard page
 UNLOCK = [0.0]   # monotonic deadline: limits are editable until then, tap the lock pill to unlock for 60 s
 FREEZE_BTN = (30, 1850, 1050, 2000)
-MISC_FOLDERS = (30, 170, 1050, 360)
-MISC_AUDIO = (30, 390, 1050, 580)
-MISC_PERF = (30, 610, 1050, 800)
-MISC_THERMALS = (30, 830, 1050, 1020)
+MISC_TERMINAL = (30, 170, 1050, 360)
+MISC_FOLDERS = (30, 390, 1050, 580)
+MISC_AUDIO = (30, 610, 1050, 800)
+MISC_PERF = (30, 830, 1050, 1020)
+MISC_THERMALS = (30, 1050, 1050, 1240)
 THERMAL_TOP, THERMAL_ROW = 170, 105
 TONE_BTN = (30, 680, 1050, 810)
 AUDIO_SPEAKER_BTN = (760, 960, 1020, 1110)
@@ -1148,7 +1149,8 @@ def page_misc(stale):
     image = Image.new('RGB', IMG, BG)
     d, text, card, bar = tools(image)
     header(image, 'Misc', stale)
-    for box, glyph, title, hint in ((MISC_FOLDERS, '\U000F024B', 'Folders', 'Browse and manage files'),
+    for box, glyph, title, hint in ((MISC_TERMINAL, '\U000F018D', 'Terminal', 'Shell with on-screen keyboard; power key leaves'),
+                                    (MISC_FOLDERS, '\U000F024B', 'Folders', 'Browse and manage files'),
                                     (MISC_AUDIO, '\U000F04C3', 'Audio', 'Speaker volume, gain and test tone'),
                                     (MISC_PERF, '\U000F061A', 'CPU & GPU performance', 'Cluster clocks and governors'),
                                     (MISC_THERMALS, '\U000F050F', 'Thermals', 'All available temperature readings')):
@@ -1513,6 +1515,8 @@ class Ui:
             elif self.page == 3 and hit(WIFI_CARD, x, y):
                 self.sub = {'kind': 'wifi', 'info': None}
                 return [('wifi', wifi_info)]
+            elif self.page == MISC_PAGE and hit(MISC_TERMINAL, x, y):
+                return [('terminal',)]
             elif self.page == MISC_PAGE and hit(MISC_FOLDERS, x, y):
                 if not self.files_opened:
                     self.files_opened = True
@@ -2827,7 +2831,8 @@ def selftest():
         ui.on_gesture(('tap', MISC_PAGE * TAB_W + 5, TAB_Y + 20), data, 0)
         assert ui.page == MISC_PAGE and ui.sub is None
         ui.render(data, False, 0)
-        ui.on_gesture(('tap', 500, 300), data, 0)                         # Folders
+        assert ui.on_gesture(('tap', 500, 300), data, 0) == [('terminal',)]
+        ui.on_gesture(('tap', 500, 500), data, 0)                         # Folders
         assert ui.sub is ui.files and ui.files_opened
         f = ui.files
         assert f['path'] in (HOME_DIR, '/')
@@ -3563,9 +3568,14 @@ def main():
                                 display.hide_bar()
                 elif display.shown and action is None and time.monotonic() >= notice_until:
                     for g in gestures:
+                        if not display.shown:   # the Terminal card left the dashboard mid-batch
+                            break
                         for effect in ui.on_gesture(g, latest, time.monotonic()):
                             if effect[0] == 'blank':
                                 display.hide()
+                            elif effect[0] == 'terminal':   # sway + foot + wvkbd; plain tty1 console if sway is down
+                                display.gpu() if gpu_on() else display.terminal()
+                                break
                             elif effect[0] == 'detail':
                                 next_detail = 0.0
                             elif effect[0] == 'pair' and agent:

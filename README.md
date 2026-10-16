@@ -64,7 +64,8 @@ and flash slot b + `userdata`, leaving stock Android on slot a.
 2. **PC:** install `fastboot` (Fedora/Arch `android-tools`, Debian/Ubuntu `fastboot`). Paths 1 and 2 also need Docker.
 
 After any path the phone is at `172.16.42.1` over USB (the PC gets `172.16.42.2`). tty1 is a plain console and tty2 is
-sway (tabs tty2-4), both logged in automatically. The power key cycles dashboard / tty1 / sway / screen off.
+sway (tabs tty2-4), both logged in automatically. Open the terminal from the dashboard: Misc → Terminal. The power key
+cycles dashboard / tty1 / screen off.
 
 ### 3. Generic ready build
 
@@ -298,9 +299,9 @@ Binds `0.0.0.0:8090` but answers only on the interfaces switched on in the phone
 
 ## Shell
 
-Power key cycles: dashboard → tty1 (stock fbcon console) → blank. Optional: sway + foot + wvkbd on VT 5 (`apk add sway foot
-wvkbd grim`) for tabs tty2-4, with a tab bar at the top (`sway/ttybar.py`, swaybar status blocks; tap to switch);
-on tty1, swipe down from the top for its tab strip:
+**Terminal:** dashboard → Misc → **Terminal** opens sway (foot + wvkbd keyboard) on tty2; the power key leaves it.
+Power key cycles: dashboard → tty1 (stock fbcon console) → blank. sway has a tab bar at the top (`sway/ttybar.py`,
+swaybar status blocks; tap to switch); on tty1, swipe down from the top for its tab strip:
 
 | Tab | What |
 |---|---|
@@ -308,7 +309,7 @@ on tty1, swipe down from the top for its tab strip:
 | tty2, tty3, tty4 | foot shells in sway |
 
 `install.sh` sets it up: `sway/config`, `ttybar.py`, `respawn.sh` → `~/.config/sway/`, `sway/foot.ini` → `~/.config/foot/`,
-`display/getty-autologin.conf` → `getty@tty{1,5}.service.d/autologin.conf`, getty on tty2-4 disabled;
+`display/getty-autologin.conf` → `getty@tty{1,2}.service.d/autologin.conf`;
 `.bash_profile` execs sway on tty2. wvkbd and the foot tabs restart themselves if they die (`respawn.sh`, only while sway is on screen). foot keeps 5000 lines of scrollback; the volume keys scroll it. Without sway running
 tabs tty2-4 fall back to the fbcon console. kmscon was dropped: 10.0 is DRM-only, nothing could draw over it.
 

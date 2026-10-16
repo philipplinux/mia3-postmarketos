@@ -69,7 +69,8 @@ Wi-Fi (the address is on the Network tab). The password is the one you just set.
 
 ## Using it
 
-- **The screen:** press the power key to switch between the dashboard, a text console, a terminal and screen off.
+- **Terminal:** on the dashboard, open the Misc tab and tap **Terminal** (shell with an on-screen keyboard).
+- **The screen:** press the power key to switch between the dashboard, the text console and screen off.
   Swipe to change dashboard tabs.
 - **Web dashboard:** turn it on from the phone screen (Network tab), then open `http://<phone address>:8090` in a browser.
 - **Battery:** it stops charging at 50 % on purpose, so the battery lasts years while plugged in all the time.

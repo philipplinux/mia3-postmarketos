@@ -27,11 +27,18 @@ def decode(blob):
         res.append((names, data))
     return res
 
+def board_id(path):
+    # icnss naming: bdwlan.bin = board id 0xff (default), bdwlan.bXX = 0xXX, bdwlan.XXX = 0xXXX
+    ext = path.rsplit(".", 1)[1]
+    return 0xff if ext == "bin" else int(ext[1:] if ext[0] == "b" and len(ext) == 3 else ext, 16)
+
 if __name__ == "__main__":
-    src, dst = sys.argv[1], sys.argv[2]
-    data = open(src, "rb").read()
-    names = ["bus=snoc,qmi-board-id=ff,qmi-chip-id=120", "bus=snoc,qmi-board-id=ff"]
-    blob = encode([(names, data)])
-    assert decode(blob) == [(names, data)]  # round-trip self-check
+    *srcs, dst = sys.argv[1:]   # every stock bdwlan.* file: a unit with another board id still finds its data
+    entries = [([f"bus=snoc,qmi-board-id={board_id(f):x},qmi-chip-id=120", f"bus=snoc,qmi-board-id={board_id(f):x}"],
+                open(f, "rb").read()) for f in sorted(srcs)]
+    assert len({e[0][0] for e in entries}) == len(entries), "two files map to one board id"
+    assert board_id("bdwlan.b04") == 0x4 and board_id("bdwlan.102") == 0x102 and board_id("bdwlan.bin") == 0xff
+    blob = encode(entries)
+    assert decode(blob) == entries  # round-trip self-check
     open(dst, "wb").write(blob)
-    print(f"{dst}: {len(blob)} bytes, names={names}")
+    print(f"{dst}: {len(blob)} bytes, {len(entries)} boards")
