@@ -1,5 +1,5 @@
 import { FastbootDevice } from 'android-fastboot/dist/fastboot.mjs';
-import { CONFIRMATION, fetchPinned, flash, selectImages, STEPS } from './mia3.js';
+import { CONFIRMATION, downloadSize, fetchPinned, flash, selectImages, STEPS } from './mia3.js';
 import { mia3 } from './mia3-manifest.js';
 
 /** @template {HTMLElement} T @param {string} id @returns {T} */
@@ -60,6 +60,8 @@ connectButton.addEventListener('click', async () => {
   try {
     const fb = new FastbootDevice();
     await fb.connect();
+    // Library-private hook (pinned 1.1.3): the only way to set flashBlob()'s split size. See downloadSize().
+    /** @type {any} */ (fb)._getDownloadSize = async () => downloadSize(await fb.getVariable('max-download-size').catch(() => null));
     st.fb = fb;
     report(`Connected (${await fb.getVariable('product') ?? 'unknown product'}). Select the images, confirm, and flash.`);
   } catch (error) {

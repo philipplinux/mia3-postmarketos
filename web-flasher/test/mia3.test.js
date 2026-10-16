@@ -3,7 +3,7 @@ import { afterEach, test } from 'node:test';
 import { createHash } from 'node:crypto';
 import { mia3 } from '../site/mia3-manifest.js';
 import { existsSync, openAsBlob } from 'node:fs';
-import { CONFIRMATION, expandedSize, fetchPinned, flash, selectImages, STEPS } from '../site/mia3.js';
+import { CONFIRMATION, downloadSize, expandedSize, fetchPinned, flash, selectImages, STEPS } from '../site/mia3.js';
 
 const original = structuredClone(mia3);
 afterEach(() => { Object.assign(mia3, structuredClone(original)); });
@@ -83,5 +83,12 @@ test('sparse rootfs counts its expanded size, raw files their own size', async (
   assert.equal(await expandedSize(new Blob(['raw'])), 3);
   const rootfs = '../simple-install/cache/out-generic/rootfs.img';
   // build output is not in git, so CI only runs the raw case
-  if (existsSync(rootfs)) assert.equal(await expandedSize(await openAsBlob(rootfs)), 579584 * 4096);
+  if (existsSync(rootfs)) assert.equal(await expandedSize(await openAsBlob(rootfs)), 580352 * 4096);
+});
+
+test('max-download-size: decimal like desktop fastboot, hex with 0x, library cap and default', () => {
+  assert.equal(downloadSize('804261888'), 804261888); // Mi A3 bootloader reply (decimal)
+  assert.equal(downloadSize('0x20000000'), 0x20000000);
+  assert.equal(downloadSize('0x80000000'), 1024 * 1024 * 1024);
+  assert.equal(downloadSize(null), 512 * 1024 * 1024);
 });

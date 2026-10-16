@@ -52,6 +52,18 @@ export function selectImages(files) {
   });
 }
 
+/**
+ * Upload chunk size from the max-download-size reply, read like desktop fastboot: "0x…" is hex, plain digits
+ * are decimal. android-fastboot 1.1.3 always reads hex, so the Mi A3's "804261888" (767 MiB) looked huge, it sent
+ * 1 GiB chunks and the phone refused them ("Requested download size is more than max allowed").
+ * Same 1 GiB cap and 512 MiB default as the library. @param {string|null} reply
+ */
+export function downloadSize(reply) {
+  const text = (reply ?? '').trim().toLowerCase();
+  const size = /^\d+$/.test(text) ? parseInt(text, 10) : parseInt(text, 16);
+  return size > 0 ? Math.min(size, 1024 * 1024 * 1024) : 512 * 1024 * 1024;
+}
+
 /** Bytes the image takes on the partition: the sparse header's block count, else the file size. @param {Blob} file */
 export async function expandedSize(file) {
   const header = new DataView(await file.slice(0, 28).arrayBuffer());
