@@ -53,12 +53,12 @@ export function selectImages(files) {
 }
 
 /**
- * getvar with a longer timeout. android-fastboot 1.1.3 gives every getvar a fixed 10 s; right after the 1.4 GB userdata
+ * getvar with a 15 s timeout (flash() retries a timed-out step twice: 45 s total). android-fastboot 1.1.3 gives every getvar a fixed 10 s; right after the 1.4 GB userdata
  * write the Mi A3 bootloader takes longer to answer the next one (step 10 stopped there twice, desktop fastboot then
  * worked). A real unplug still fails at once: the pending USB transfer rejects. Same FAIL→null and trim as the library.
  * @param {(command:string)=>Promise<{text:string}>} run @param {number} ms
  */
-export function patientGetvar(run, ms = 60000) {
+export function patientGetvar(run, ms = 15000) {
   return async (/** @type {string} */ name) => {
     /** @type {ReturnType<typeof setTimeout>|undefined} */
     let timer;
