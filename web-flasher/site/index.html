@@ -45,12 +45,14 @@
               <button class="button button-secondary" id="connect" type="button">Connect fastboot</button>
               <p id="status" class="status" role="status" aria-live="polite">Put the phone in fastboot mode, then connect.</p>
             </div>
+            <div class="image-source">
             <button class="button button-secondary download-button" id="download" type="button">Download the three images (~1.5 GB)</button>
             <label class="file-picker" for="files">
               <span class="file-picker-icon" aria-hidden="true">＋</span>
               <span><strong>Or choose boot.img, rootfs.img, vbmeta.img</strong><small>From the GitHub release or Hugging Face</small></span>
               <input id="files" type="file" accept=".img" multiple>
             </label>
+            </div>
             <ul class="selected-files" id="selected" aria-label="Selected image files"><li class="empty-files">No files selected</li></ul>
             <p class="field-help" id="build-info"></p>
             <label class="risk-check" for="risk"><input id="risk" type="checkbox"><span>I understand this <strong>erases userdata</strong> (all Android data) and replaces slot b. Login afterwards is <code>user</code> / <code>changeme</code>; I will change it.</span></label>

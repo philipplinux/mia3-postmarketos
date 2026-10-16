@@ -253,4 +253,9 @@ progress::-moz-progress-bar { background: var(--teal); }
 .mia3-card > * + * { margin-top: 14px; }
 .mia3-steps { margin-top: 14px; }
 
-.download-button { width: 100%; margin-bottom: 10px; }
+.image-source { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+.download-button { width: 100%; height: 100%; white-space: normal; }
+.image-source .file-picker { flex-wrap: wrap; }
+.image-source .file-picker > span:nth-child(2) { flex: 1; }
+.image-source .file-picker input { width: 100%; max-width: 100%; margin-left: 0; }
+@media (max-width: 560px) { .image-source { grid-template-columns: 1fr; } }
