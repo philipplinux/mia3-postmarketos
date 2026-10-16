@@ -25,6 +25,7 @@ assign [app_id="tty4"] workspace 4
 exec ~/.config/sway/respawn.sh wvkbd-mobintl -H 270
 # each foot comes back when closed (exit)
 exec ~/.config/sway/respawn.sh foot -a tty2
-exec ~/.config/sway/respawn.sh foot -a tty3
-exec ~/.config/sway/respawn.sh foot -a tty4
+# first boot only: tty3/4 wait until tty2's ble.sh has built its cache, else all three build it at once and race on mv
+exec sh -c '[ -d ~/.cache/blesh ] || sleep 30; exec ~/.config/sway/respawn.sh foot -a tty3'
+exec sh -c '[ -d ~/.cache/blesh ] || sleep 30; exec ~/.config/sway/respawn.sh foot -a tty4'
 workspace 2
