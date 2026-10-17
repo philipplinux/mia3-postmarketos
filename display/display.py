@@ -518,6 +518,26 @@ def rename_user(user, name):
         if any(u.pw_name == name for u in pwd.getpwall()):
             return False, 'That username already exists'
         configs = []
+        # usermod refuses while the UID runs processes (autologin, containers), even with
+        # --prefix, so rename the name field in the account files directly; UID/home stay.
+        # group/gshadow member lists are the trailing comma fields (gshadow: admins too).
+        for fname, member_fields in (('passwd', ()), ('shadow', ()), ('group', (3,)), ('gshadow', (2, 3))):
+            path = Path('/etc') / fname
+            if not path.exists():
+                continue
+            content = path.read_text()
+            lines = []
+            for line in content.splitlines(keepends=True):
+                fields = line.rstrip('\n').split(':')
+                if fields[0] == user:
+                    fields[0] = name
+                for i in member_fields:
+                    if i < len(fields):
+                        fields[i] = ','.join(name if m == user else m for m in fields[i].split(','))
+                lines.append(':'.join(fields) + line[len(line.rstrip('\n')):])
+            updated = ''.join(lines)
+            if updated != content:
+                configs.append((path, content, updated))
         for path in Path('/etc/systemd/system').glob('getty@*.service.d/autologin.conf'):
             content = path.read_text()
             updated = re.sub(r'(?<=--autologin )' + re.escape(user) + r'(?=\s|$)', name, content)
@@ -525,10 +545,6 @@ def rename_user(user, name):
                 configs.append((path, content, updated))
     except (KeyError, OSError) as exc:
         return False, f'Cannot prepare rename: {exc}'[:100]
-    # Prefix mode permits a login-only rename while its unchanged UID/home are in use.
-    ok, msg = sh('usermod', '--prefix', '/', '--login', name, user)
-    if not ok:
-        return False, (msg.splitlines() or ['Rename failed'])[-1][:100]
     try:
         for path, _, updated in configs:
             write_login_config(path, updated)
@@ -536,7 +552,7 @@ def rename_user(user, name):
         if not ok:
             raise OSError(msg)
     except OSError as exc:
-        rollback, _ = sh('usermod', '--prefix', '/', '--login', user, name)
+        rollback = True
         for path, content, _ in configs:
             try:
                 write_login_config(path, content)
@@ -2951,8 +2967,15 @@ def selftest():
         auto.parent.mkdir(parents=True)
         original = 'ExecStart=-/sbin/agetty --autologin philipp --noclear %I $TERM\n'
         auto.write_text(original)
+        etc = real_path(tmp) / 'etc'
+        accts = {'passwd': 'root:x:0:0::/root:/bin/sh\nphilipp:x:1000:1000::/home/user:/bin/sh\n',
+                 'shadow': 'philipp:$6$h:1::::::\n',
+                 'group': 'wheel:x:10:root,philipp\nphilipp:x:1000:\nphilippx:x:1001:philippx\n',
+                 'gshadow': 'docker:!:philipp:philipp\n'}
+        for fname, text in accts.items():
+            (etc / fname).write_text(text)
         def test_path(path):
-            return systemd if str(path) == '/etc/systemd/system' else real_path(path)
+            return {'/etc/systemd/system': systemd, '/etc': etc}.get(str(path)) or real_path(path)
         with patch.object(pwd, 'getpwnam', side_effect=fake_getpwnam), \
              patch.object(pwd, 'getpwall', side_effect=lambda: list(users)), \
              patch.object(sys.modules[__name__], 'Path', side_effect=test_path), \
@@ -2966,10 +2989,17 @@ def selftest():
             account_calls.clear()
             result = rename_user('philipp', 'newlogin')
             assert result[0] and result[2] == {'user': 'newlogin'} and '--autologin newlogin' in auto.read_text()
+            assert (etc / 'passwd').read_text().splitlines()[1] == 'newlogin:x:1000:1000::/home/user:/bin/sh'
+            assert (etc / 'shadow').read_text() == 'newlogin:$6$h:1::::::\n'
+            assert (etc / 'group').read_text() == 'wheel:x:10:root,newlogin\nnewlogin:x:1000:\nphilippx:x:1001:philippx\n'
+            assert (etc / 'gshadow').read_text() == 'docker:!:newlogin:newlogin\n'
             auto.write_text(original)
+            for fname, text in accts.items():
+                (etc / fname).write_text(text)
             calls.clear(); fail_reload[0] = True; reload_count[0] = 0
             result = rename_user('philipp', 'rollback')
             assert not result[0] and result[1].startswith('Rename rolled back:') and auto.read_text() == original
+            assert all((etc / f).read_text() == t for f, t in accts.items())
     print('selftest ok')
 
 
