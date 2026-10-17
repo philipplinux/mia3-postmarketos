@@ -39,7 +39,7 @@
             <ol class="guide-list mia3-steps">
               <li><span>01</span><p>Unlocked bootloader needed (<code>fastboot flashing unlock</code>, wipes the phone; see the README).</p></li>
               <li><span>02</span><p>Power off. Hold <kbd>Volume Down</kbd> + <kbd>Power</kbd> until the FASTBOOT screen shows, then plug in USB.</p></li>
-              <li><span>03</span><p>Connect first: it tells you right away if the phone is busy. Then download the images or pick the three files you already have. Every file's size and SHA-256 is checked before anything is written.</p></li>
+              <li><span>03</span><p>Connect first: it tells you right away if the phone is busy. Then download the images or pick the three files you already have. Every file's size and SHA-256 is checked before anything is written (the previous build's files are accepted too).</p></li>
             </ol>
             <div class="connect-row">
               <button class="button button-secondary" id="connect" type="button">Connect fastboot</button>
@@ -56,6 +56,7 @@
             <ul class="selected-files" id="selected" aria-label="Selected image files"><li class="empty-files">No files selected</li></ul>
             <p class="field-help" id="build-info"></p>
             <label class="risk-check" for="risk"><input id="risk" type="checkbox"><span>I understand this <strong>erases userdata</strong> (all Android data) and replaces slot b. Login afterwards is <code>user</code> / <code>changeme</code>; I will change it.</span></label>
+            <label class="risk-check" for="skip-hash"><input id="skip-hash" type="checkbox"><span><strong>Skip the SHA-256 and size check</strong> (own or other builds). Only the file names are checked; a corrupt or wrong image gets written as is.</span></label>
             <label class="field-label confirmation-label" for="confirm">Type <code>ERASE MI A3</code> to confirm</label>
             <input class="confirmation-input" id="confirm" type="text" placeholder="ERASE MI A3" autocomplete="off" autocapitalize="characters" spellcheck="false">
             <div class="flash-actions">

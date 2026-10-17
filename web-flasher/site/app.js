@@ -24,6 +24,7 @@ const downloadButton = /** @type {HTMLButtonElement} */ (el('download'));
 const picker = /** @type {HTMLInputElement} */ (el('files'));
 const risk = /** @type {HTMLInputElement} */ (el('risk'));
 const confirm = /** @type {HTMLInputElement} */ (el('confirm'));
+const skipHash = /** @type {HTMLInputElement} */ (el('skip-hash'));
 const status = el('status');
 const progress = /** @type {HTMLProgressElement} */ (el('progress'));
 const log = el('log');
@@ -85,14 +86,17 @@ connectButton.addEventListener('click', async () => {
   } finally { st.busy = false; update(); }
 });
 
+/** @type {File[]} */
+let picked = [];
 /** @param {File[]} files */
 const pick = files => {
+  picked = files;
   const list = el('selected');
   try {
-    st.images = selectImages(files);
+    st.images = selectImages(files, skipHash.checked);
     list.replaceChildren(...st.images.map(image => {
       const entry = document.createElement('li');
-      entry.textContent = `${image.name} → ${image.partition} (${(image.size / 1024 / 1024).toFixed(1)} MiB)`;
+      entry.textContent = `${image.name} → ${image.partition} (${(image.file.size / 1024 / 1024).toFixed(1)} MiB)`;
       return entry;
     }));
   } catch (error) {
@@ -121,7 +125,7 @@ flashButton.addEventListener('click', async () => {
   if (flashButton.disabled || !st.fb || !st.images) return;
   st.busy = true; update();
   try {
-    await flash(st.fb, st.images, { consent: risk.checked, confirmation: confirm.value }, report, assertSession);
+    await flash(st.fb, st.images, { consent: risk.checked, confirmation: confirm.value, skipHash: skipHash.checked }, report, assertSession);
     st.finished = true;
   } catch (error) {
     st.lost = true;
@@ -130,5 +134,7 @@ flashButton.addEventListener('click', async () => {
 });
 risk.addEventListener('change', update);
 confirm.addEventListener('input', update);
+// Re-check the picked files: skipping also lifts the size pin.
+skipHash.addEventListener('change', () => { if (picked.length) pick(picked); });
 el('build-info').textContent = `Build ${mia3.release}. Wait until step ${STEPS} says Done.`;
 update();

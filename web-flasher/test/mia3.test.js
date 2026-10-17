@@ -115,3 +115,19 @@ test('a write step that times out is retried twice, then stops; other errors sto
   await assert.rejects(flash(fb, images, consent, () => {}, () => {}), /bad image/);
   assert.equal(fails, 1);
 });
+
+test('previous build (revision) is accepted; skipHash lifts size and SHA-256 pins', async () => {
+  const { fb, calls } = fixture();
+  const old = new File(['OLD-ROOTFS'], 'rootfs.img');
+  const files = mia3.images.map(image => image.name === 'rootfs.img' ? old : new File([contents[image.name]], image.name));
+  assert.throws(() => selectImages(files), /wrong size/);
+  mia3.images[1].revisions = [{ size: old.size, sha256: sha('OLD-ROOTFS') }];
+  await flash(fb, selectImages(files), consent, () => {}, () => {});
+  assert.ok(calls.includes('flash:userdata'));
+  mia3.images[1].revisions = [{ size: old.size, sha256: '0'.repeat(64) }];
+  await assert.rejects(flash(fb, selectImages(files), consent, () => {}, () => {}), /mismatch/);
+  mia3.images[1].revisions = [];
+  calls.length = 0;
+  await flash(fb, selectImages(files, true), { ...consent, skipHash: true }, () => {}, () => {});
+  assert.ok(calls.includes('flash:userdata'));
+});

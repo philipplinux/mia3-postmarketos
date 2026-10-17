@@ -38,14 +38,20 @@ export function pinsFilled() {
   return mia3.images.every(image => image.size > 0 && /^[0-9a-f]{64}$/.test(image.sha256));
 }
 
-/** @param {Iterable<File>} files */
-export function selectImages(files) {
+/**
+ * Hashes accepted for a file of this size: the pin plus revisions with that size.
+ * @param {{size:number,sha256:string,revisions?:{size:number,sha256:string}[]}} image @param {number} size
+ */
+export const accepted = (image, size) => [image, ...image.revisions ?? []].filter(pin => pin.size === size).map(pin => pin.sha256);
+
+/** skipHash: any size, no SHA-256 check (own builds). @param {Iterable<File>} files @param {boolean} skipHash */
+export function selectImages(files, skipHash = false) {
   if (!pinsFilled()) throw Error('Image pins are not filled in (site/mia3-manifest.js). Refusing to continue.');
   const selected = [...files];
   if (selected.length !== mia3.images.length) throw Error(`Select exactly ${mia3.images.map(i => i.name).join(', ')}.`);
   return mia3.images.map(image => {
     const matches = selected.filter(file => file.name === image.name);
-    if (matches.length !== 1 || matches[0].size !== image.size) {
+    if (matches.length !== 1 || (!skipHash && !accepted(image, matches[0].size).length)) {
       throw Error(`${image.name} is missing, duplicated, or has the wrong size for ${mia3.release}.`);
     }
     return { ...image, file: matches[0] };
@@ -100,7 +106,7 @@ export async function expandedSize(file) {
  * before the first write; any mismatch or unexpected reply stops it (fail closed).
  * @param {Fastboot} fb
  * @param {ReturnType<typeof selectImages>} images
- * @param {{consent:boolean,confirmation:string}} consent
+ * @param {{consent:boolean,confirmation:string,skipHash?:boolean}} consent
  * @param {(message:string,fraction:number)=>void} report
  * @param {()=>void} assertSession
  */
@@ -132,10 +138,11 @@ export async function flash(fb, images, consent, report, assertSession) {
   next('Checking the bootloader is unlocked');
   if (await fb.getVariable('unlocked') !== 'yes') throw Error('Bootloader is locked (fastboot flashing unlock, wipes the phone). Nothing written.');
 
-  for (const image of selectImages(images.map(image => image.file))) {
+  for (const image of selectImages(images.map(image => image.file), consent.skipHash)) {
+    if (consent.skipHash) { next(`SHA-256 check skipped: ${image.name}`); continue; }
     next(`Checking SHA-256: ${image.name}`);
     const digest = await checksum(image.file, fraction => say(`Checking SHA-256: ${image.name}`, fraction));
-    if (digest !== image.sha256) throw Error(`SHA-256 mismatch: ${image.name}. Nothing written.`);
+    if (!accepted(image, image.file.size).includes(digest)) throw Error(`SHA-256 mismatch: ${image.name}. Nothing written.`);
   }
 
   next('Checking the partitions');
