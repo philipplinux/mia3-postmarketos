@@ -38,11 +38,11 @@ Web dashboard (port 8090):
 
 ## Changelog
 
-### Unreleased — 2026-10-15
+### v2026.10.17
 
 - **SSH account rename:** on the phone, open Network → SSH, tap the username, enter a new name and tap **Rename account**. The account keeps its UID, home directory, password and SSH keys; console autologin follows the new name. Tap the username again or Back to cancel. Use the new username for subsequent SSH connections (update any saved SSH client configuration).
-- Username validation, duplicate-name checks and rollback on console-autologin update failure are covered by the display selftest.
-- Userspace display update only; no kernel or release image rebuild. Existing published images do not include this change yet.
+- **Fix:** the rename failed with `usermod: user user is currently used by process N` whenever the account was logged in (always, because of console autologin). It now edits `/etc/passwd`, `shadow`, `group` and `gshadow` directly. Validation, duplicate names and rollback are covered by the display selftest.
+- Release images rebuilt (generic build: `user` / `changeme`).
 
 ## Three ways to install
 
